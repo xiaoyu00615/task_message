@@ -78,7 +78,3 @@ tasks_message/
 ## 快捷键
 
 - **Ctrl+Alt+T**：显示/隐藏主窗口
-
-## 许可证
-
-MIT License

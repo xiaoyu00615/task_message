@@ -68,7 +68,6 @@ tasks.json
 config.json
 
 # Windows
-*.exe
 *.dll
 *.obj
 *.o

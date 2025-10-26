@@ -9,7 +9,8 @@ class ConfigManager:
         self.default_config = {
             "window_width": 1000,
             "window_height": 700,
-            "show_notifications": True  # 是否显示提示信息
+            "show_notifications": True,  # 是否显示提示信息
+            "update_interval": 300  # 数据更新时间间隔（秒），默认5分钟(300秒)
         }
 
     def load_config(self):

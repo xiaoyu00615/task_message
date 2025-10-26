@@ -9,6 +9,60 @@ class TaskHandler:
         self.tasks = self.data_manager.load_tasks()
         self.check_overdue_tasks()  # 初始化时检查超时任务
         self.auto_promote_urgency()  # 初始化时自动提升紧急度
+    
+    def calculate_time_remaining(self, task):
+        """
+        计算任务剩余时间
+        返回格式化的倒计时字符串，如"剩余: 2天 3小时 45分钟"或"已超时: 1小时 30分钟"
+        """
+        if task["deadline"] == "无截止日期":
+            return "无截止日期"
+        
+        try:
+            # 尝试解析包含时间的格式
+            try:
+                deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d %H:%M")
+            except ValueError:
+                # 回退到旧格式（仅日期）
+                deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d")
+            
+            now = datetime.now()
+            time_diff = deadline_datetime - now
+            total_seconds = time_diff.total_seconds()
+            
+            if total_seconds <= 0:
+                # 已超时
+                total_seconds = abs(total_seconds)
+                days = int(total_seconds // (24 * 3600))
+                hours = int((total_seconds % (24 * 3600)) // 3600)
+                minutes = int((total_seconds % 3600) // 60)
+                
+                parts = []
+                if days > 0:
+                    parts.append(f"{days}天")
+                if hours > 0:
+                    parts.append(f"{hours}小时")
+                if minutes > 0 or not parts:  # 至少显示分钟
+                    parts.append(f"{minutes}分钟")
+                
+                return f"已超时: {' '.join(parts)}"
+            else:
+                # 未超时
+                days = int(total_seconds // (24 * 3600))
+                hours = int((total_seconds % (24 * 3600)) // 3600)
+                minutes = int((total_seconds % 3600) // 60)
+                
+                parts = []
+                if days > 0:
+                    parts.append(f"{days}天")
+                if hours > 0:
+                    parts.append(f"{hours}小时")
+                if minutes > 0 or not parts:  # 至少显示分钟
+                    parts.append(f"{minutes}分钟")
+                
+                return f"剩余: {' '.join(parts)}"
+        except Exception as e:
+            return "时间格式错误"
 
     def add_task(self, task_info):
         """添加新任务到待办列表"""
@@ -129,12 +183,15 @@ class TaskHandler:
             self.auto_promote_urgency()
 
         # 智能排序核心逻辑：
-        # 1. 优先按紧急度升序（1最优先）
-        # 2. 紧急度相同时按星级降序（3星最优先）
+        # 1. 优先将无截止日期的任务排在最后
+        # 2. 有截止日期的任务：按紧急度升序（1最优先），紧急度相同时按重要度降序
+        # 3. 无截止日期的任务：直接按重要度降序（3星最优先）
         if task_type in ["todo", "overdue"]:
             return sorted(
                 self.tasks[task_type],
-                key=lambda x: (x["urgency"], -x["importance"])  # 复合排序键
+                key=lambda x: (x["deadline"] == "无截止日期", 
+                             x["urgency"] if x["deadline"] != "无截止日期" else 0, 
+                             -x["importance"])  # 复合排序键
             )
         # 已完成任务按完成时间倒序
         elif task_type == "done":

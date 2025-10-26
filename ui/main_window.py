@@ -4,9 +4,10 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                              QDateTimeEdit, QPushButton, QSplitter, QMessageBox,
                              QSystemTrayIcon, QMenu, QAction, qApp, QDialog,
                              QSpinBox, QLabel, QCheckBox, QSizePolicy)
-from PyQt5.QtCore import Qt, QDate, QDateTime, QThread, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, QDate, QDateTime, QThread, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 from pynput.keyboard import GlobalHotKeys
 import threading
 
@@ -66,6 +67,19 @@ class SettingsDialog(QDialog):
         self.notify_check = QCheckBox("显示提示信息（系统托盘消息）")
         self.notify_check.setChecked(self.config["show_notifications"])
         layout.addWidget(self.notify_check)
+        
+        # 数据更新时间间隔设置
+        update_group = QGroupBox("数据更新设置")
+        update_layout = QFormLayout()
+        
+        self.update_interval_spin = QSpinBox()
+        self.update_interval_spin.setRange(1, 3600)  # 1到3600秒
+        # 直接使用配置中的秒值
+        self.update_interval_spin.setValue(self.config["update_interval"])
+        update_layout.addRow("更新时间间隔（秒）:", self.update_interval_spin)
+        
+        update_group.setLayout(update_layout)
+        layout.addWidget(update_group)
 
         # 按钮区域
         btn_layout = QHBoxLayout()
@@ -83,6 +97,8 @@ class SettingsDialog(QDialog):
         self.config["window_width"] = self.width_spin.value()
         self.config["window_height"] = self.height_spin.value()
         self.config["show_notifications"] = self.notify_check.isChecked()
+        # 直接保存秒值
+        self.config["update_interval"] = self.update_interval_spin.value()
         super().accept()
 
     def get_config(self):
@@ -117,6 +133,9 @@ class MainWindow(QMainWindow):
         # 初始化UI
         self.init_ui()
         self.refresh_all_lists()
+        
+        # 初始化定时器用于刷新倒计时显示
+        self.init_timer()
 
         # 默认隐藏窗口（后台运行）
         self.hide()
@@ -295,6 +314,12 @@ class MainWindow(QMainWindow):
                 self.config = new_config
                 # 应用窗口大小设置
                 self.resize(self.config["window_width"], self.config["window_height"])
+                
+                # 更新定时器间隔（秒转换为毫秒）
+                new_interval_ms = self.config["update_interval"] * 1000
+                self.timer.setInterval(new_interval_ms)
+                print(f"定时器间隔已更新为{new_interval_ms}毫秒")
+                
                 QMessageBox.information(self, "设置成功", "配置已保存")
 
     def toggle_deadline(self):
@@ -417,12 +442,20 @@ class MainWindow(QMainWindow):
             self.show_system_tray_message("任务已删除", f"已删除：{task_name}")
 
     def format_task_text(self, task):
-        """格式化任务显示文本"""
+        """格式化任务显示文本，包含创建时间、截止日期和倒计时信息"""
         stars = "★" * task["importance"] + "☆" * (3 - task["importance"])
+        # 计算并获取倒计时信息
+        time_remaining = self.task_handler.calculate_time_remaining(task)
+        
+        # 获取创建时间和截止日期
+        create_time = task.get('create_time', '')
+        deadline = task.get('deadline', '无截止日期')
+        
         return (
             f"{task['name']}\n" 
             f"重要度: {stars} | 紧急度: {task['urgency']}\n" 
-            f"创建: {task['create_time']} | 截止: {task['deadline']}"
+            f"创建时间: {create_time} | 截止日期: {deadline}\n" 
+            f"{time_remaining}"
         )
 
     def refresh_list(self, task_type):
@@ -512,8 +545,40 @@ class MainWindow(QMainWindow):
         self.hide()
         self.show_system_tray_message("窗口已隐藏", "使用 Ctrl+Alt+T 呼出窗口")
 
+    def init_timer(self):
+        """初始化定时器用于刷新倒计时显示"""
+        self.timer = QTimer(self)
+        # 从配置中获取更新间隔（秒转换为毫秒）
+        interval_ms = self.config["update_interval"] * 1000
+        self.timer.setInterval(interval_ms)
+        print(f"定时器已初始化，间隔设置为{interval_ms}毫秒")
+        # 连接信号到刷新方法
+        self.timer.timeout.connect(self.refresh_time_display)
+        # 启动定时器
+        self.timer.start()
+        print("定时器已启动")
+    
+    def refresh_time_display(self):
+        """刷新任务时间显示，但不进行完整的列表排序和保存"""
+        # 只刷新待办和超时列表的显示，避免频繁的完整刷新影响性能
+        print(f"定时器触发刷新时间显示: {time.strftime('%H:%M:%S')}")  # 添加调试日志
+        for task_type in ["todo", "overdue"]:
+            list_widget = getattr(self, f"{task_type}_list")
+            list_widget.clear_list()
+            
+            tasks = self.task_handler.get_sorted_tasks(task_type)  # 这里会更新紧急度
+            for index, task in enumerate(tasks, 1):
+                list_widget.add_task_item(
+                    self.format_task_text(task),
+                    index=index,
+                    urgency=task["urgency"],
+                    is_overdue=(task_type == "overdue"),
+                    is_done=(task_type == "done")
+                )
+    
     def exit_app(self):
         """退出应用"""
+        self.timer.stop()  # 停止定时器
         self.data_manager.save_tasks(self.task_handler.tasks)
         self.tray_icon.hide()  # 隐藏托盘图标
         qApp.quit()  # 退出应用

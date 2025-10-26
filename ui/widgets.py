@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QListWidget,
                              QListWidgetItem, QLabel)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QFont, QColor, QPalette
+from datetime import datetime
 
 
 class TaskItemWidget(QWidget):
@@ -39,7 +40,6 @@ class TaskItemWidget(QWidget):
         index_label.setFont(index_font)
         index_label.setAlignment(Qt.AlignTop | Qt.AlignRight)
         index_label.setFixedWidth(25)
-        # 序号保持默认黑色（不设置颜色）
         main_layout.addWidget(index_label)
 
         content_layout = QVBoxLayout()
@@ -47,14 +47,13 @@ class TaskItemWidget(QWidget):
         content_layout.setSpacing(5)
 
         lines = text.split('\n')
-        if len(lines) >= 3:
+        if len(lines) >= 4:
             # 事务名称（纯黑色）
             name_label = QLabel(lines[0])
             name_font = QFont()
             name_font.setPointSize(13)
             name_font.setBold(True)
             name_label.setFont(name_font)
-            # 不设置文本颜色，使用默认黑色
             content_layout.addWidget(name_label)
 
             # 重要度和紧急度（纯黑色）
@@ -62,15 +61,33 @@ class TaskItemWidget(QWidget):
             info_font = QFont()
             info_font.setPointSize(11)
             info_label.setFont(info_font)
-            # 不设置文本颜色，使用默认黑色
             content_layout.addWidget(info_label)
 
-            # 时间信息（纯黑色，仅调整字体大小）
-            time_label = QLabel(lines[2])
+            # 创建时间和截止日期（不加粗）
+            datetime_label = QLabel(lines[2])
+            datetime_font = QFont()
+            datetime_font.setPointSize(10)
+            # 不设置加粗，保持默认字体样式
+            datetime_label.setFont(datetime_font)
+            content_layout.addWidget(datetime_label)
+
+            # 倒计时信息（突出显示，加粗）
+            time_label = QLabel(lines[3])
             time_font = QFont()
-            time_font.setPointSize(9)
+            time_font.setPointSize(10)
+            time_font.setBold(True)  # 倒计时信息加粗显示
             time_label.setFont(time_font)
-            # 关键：移除时间标签的颜色设置，使用默认黑色
+            
+            # 根据倒计时内容设置不同颜色
+            if "已超时" in lines[3]:
+                time_label.setStyleSheet("color: rgb(220, 50, 50);")  # 超时显示红色
+            elif "剩余" in lines[3]:
+                # 检查剩余时间，如果小于1天则显示橙色
+                if any(part in lines[3] for part in ["分钟", "小时"]) and "天" not in lines[3]:
+                    time_label.setStyleSheet("color: rgb(245, 120, 0);")  # 短时间显示橙色
+                else:
+                    time_label.setStyleSheet("color: rgb(0, 80, 150);")  # 正常剩余时间显示蓝色
+            
             content_layout.addWidget(time_label)
         else:
             label = QLabel(text)
@@ -103,6 +120,65 @@ class TaskItemWidget(QWidget):
                 5: "background-color: rgb(80, 150, 255);"  # 最不紧急-深蓝色
             }
             return urgency_colors.get(self.urgency, "background-color: rgb(200, 200, 200);")
+    
+    def update_time_display(self):
+        """更新任务的时间显示"""
+        # 获取内容布局中的最后一个标签（应该是时间标签）
+        main_layout = self.layout()
+        content_layout = main_layout.itemAt(2).layout()  # 获取内容布局
+        
+        if content_layout.count() >= 4:  # 确保至少有4个标签
+            time_label = content_layout.itemAt(3).widget()  # 第4个标签是时间标签
+            datetime_label = content_layout.itemAt(2).widget()  # 第3个标签包含日期信息
+            
+            # 解析datetime_label中的内容，提取截止日期
+            datetime_text = datetime_label.text()
+            if "截止日期：" in datetime_text:
+                # 提取截止日期部分
+                deadline_str = datetime_text.split("截止日期：")[1].strip()
+                
+                # 计算并更新倒计时
+                if deadline_str != "无截止日期":
+                    # 解析截止日期时间
+                    try:
+                        # 假设格式为 "2024-10-25 23:59:59"
+                        deadline = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M:%S")
+                        now = datetime.now()
+                        
+                        if now > deadline:
+                            # 超时
+                            self.is_overdue = True
+                            time_label.setText("已超时")
+                            time_label.setStyleSheet("color: rgb(220, 50, 50);")  # 超时显示红色
+                            
+                            # 更新左侧色块为红色
+                            color_bar = main_layout.itemAt(0).widget()
+                            color_bar.setStyleSheet("border-radius: 3px; background-color: rgb(255, 90, 90);")
+                        else:
+                            # 计算剩余时间
+                            remaining = deadline - now
+                            days = remaining.days
+                            hours, remainder = divmod(remaining.seconds, 3600)
+                            minutes, seconds = divmod(remainder, 60)
+                            
+                            # 格式化剩余时间显示
+                            if days > 0:
+                                time_text = f"剩余：{days}天{hours}小时"
+                                time_label.setStyleSheet("color: rgb(0, 80, 150);")  # 正常剩余时间显示蓝色
+                            elif hours > 0:
+                                time_text = f"剩余：{hours}小时{minutes}分钟"
+                                time_label.setStyleSheet("color: rgb(245, 120, 0);")  # 短时间显示橙色
+                            else:
+                                time_text = f"剩余：{minutes}分钟{seconds}秒"
+                                time_label.setStyleSheet("color: rgb(245, 120, 0);")  # 短时间显示橙色
+                            
+                            time_label.setText(time_text)
+                    except ValueError:
+                        # 如果解析失败，保持原样
+                        pass
+                else:
+                    # 无截止日期，保持原样
+                    pass
 
 
 class TaskListWidget(QWidget):
@@ -170,7 +246,7 @@ class TaskListWidget(QWidget):
             is_done=is_done
         )
         item = QListWidgetItem()
-        item.setSizeHint(QSize(0, 95))
+        item.setSizeHint(QSize(0, 100))  # 增加高度以容纳加粗的倒计时信息
         self.list_widget.addItem(item)
         self.list_widget.setItemWidget(item, task_widget)
 
@@ -180,3 +256,11 @@ class TaskListWidget(QWidget):
     def get_selected_index(self):
         selected = self.list_widget.selectedItems()
         return self.list_widget.row(selected[0]) if selected else -1
+
+    def update_time_display(self):
+        """更新列表中所有任务的时间显示"""
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            task_widget = self.list_widget.itemWidget(item)
+            if hasattr(task_widget, 'update_time_display'):
+                task_widget.update_time_display()

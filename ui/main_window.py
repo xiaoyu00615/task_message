@@ -586,14 +586,40 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "请选择一个任务")
             return
 
-        # 获取任务名称用于提示
-        tasks = self.task_handler.get_sorted_tasks(task_type)
-        task_name = tasks[index]["name"]
-
-        if self.task_handler.mark_as_done(task_type, index):
+        # 获取选中项的任务数据（直接从UI组件中获取）
+        selected_task_data = list_widget.get_selected_task_data()
+        
+        # 关键点：保存选中任务的唯一标识（创建时间和名称）
+        # 这样即使在执行过程中列表被刷新，也能通过这些标识找到正确的任务
+        task_create_time = None
+        task_name = None
+        
+        if selected_task_data:
+            task_create_time = selected_task_data.get("create_time")
+            task_name = selected_task_data["name"]
+        else:
+            # 获取过滤后的任务列表作为备选
+            all_tasks = self.task_handler.get_sorted_tasks(task_type)
+            filtered_tasks = self.filter_tasks(all_tasks)
+            if index < len(filtered_tasks):
+                selected_task = filtered_tasks[index]
+                task_create_time = selected_task.get("create_time")
+                task_name = selected_task["name"]
+        
+        if not task_name:
+            QMessageBox.warning(self, "错误", "无法获取任务信息")
+            return
+        
+        # 关键修复：即使在执行过程中定时器触发刷新，我们也直接使用任务标识查找并完成
+        # 而不是依赖于可能变化的索引
+        success = self.task_handler.mark_task_done_by_identifier(task_type, task_create_time, task_name)
+        
+        if success:
             self.refresh_list(task_type)
             self.refresh_list("done")
             self.show_system_tray_message("任务已完成", f"已完成：{task_name}")
+        else:
+            QMessageBox.warning(self, "错误", f"无法标记任务 '{task_name}' 为完成")
 
     def handle_delete(self, task_type):
         """处理删除任务"""
@@ -604,19 +630,47 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "请选择一个任务")
             return
 
-        # 获取任务名称用于提示
-        tasks = self.task_handler.get_sorted_tasks(task_type)
-        task_name = tasks[index]["name"]
-
+        # 获取选中项的任务数据（直接从UI组件中获取）
+        selected_task_data = list_widget.get_selected_task_data()
+        
+        # 关键点：保存选中任务的唯一标识（创建时间和名称）
+        # 这样即使在执行过程中列表被刷新，也能通过这些标识找到正确的任务
+        task_create_time = None
+        task_name = None
+        
+        if selected_task_data:
+            task_create_time = selected_task_data.get("create_time")
+            task_name = selected_task_data["name"]
+        else:
+            # 获取过滤后的任务列表作为备选
+            all_tasks = self.task_handler.get_sorted_tasks(task_type)
+            filtered_tasks = self.filter_tasks(all_tasks)
+            if index < len(filtered_tasks):
+                selected_task = filtered_tasks[index]
+                task_create_time = selected_task.get("create_time")
+                task_name = selected_task["name"]
+        
+        if not task_name:
+            QMessageBox.warning(self, "错误", "无法获取任务信息")
+            return
+        
         # 确认删除
         reply = QMessageBox.question(
-            self, "确认", "确定要删除选中的任务吗？",
+            self, "确认", f"确定要删除任务 '{task_name}' 吗？",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
 
-        if reply == QMessageBox.Yes and self.task_handler.delete_task(task_type, index):
-            self.refresh_list(task_type)
-            self.show_system_tray_message("任务已删除", f"已删除：{task_name}")
+        if reply == QMessageBox.Yes:
+            # 关键修复：即使在执行过程中定时器触发刷新，我们也直接使用任务标识查找并删除
+            # 而不是依赖于可能变化的索引
+            success = self.task_handler.delete_task_by_identifier(task_type, task_create_time, task_name)
+            
+            if success:
+                self.refresh_list(task_type)
+                self.show_system_tray_message("任务已删除", f"已删除：{task_name}")
+            else:
+                QMessageBox.warning(self, "错误", f"无法删除任务 '{task_name}'")
+
 
     def format_task_text(self, task):
         """格式化任务显示文本，包含创建时间、截止日期、类别、标签和倒计时信息"""
@@ -769,18 +823,35 @@ class MainWindow(QMainWindow):
     def refresh_list(self, task_type):
         list_widget = getattr(self, f"{task_type}_list")
         
-        # 保存当前滚动位置
+        # 保存当前滚动位置和选中状态
         scroll_pos = 0
+        selected_index = -1
         if hasattr(list_widget, 'save_scroll_position'):
             scroll_pos = list_widget.save_scroll_position()
-            
+        if hasattr(list_widget, 'save_selection'):
+            selected_index = list_widget.save_selection()
+        
+        # 关键修复：在清空列表前，确保清除所有选择状态，防止跨列表选择混淆
+        # 这是因为在更新一个列表时，由于某些事件传递机制，选择状态可能错误地传播到其他列表
+        if hasattr(list_widget, 'list_widget') and list_widget.list_widget and hasattr(list_widget.list_widget, 'selectionModel'):
+            selection_model = list_widget.list_widget.selectionModel()
+            if selection_model:
+                selection_model.clearSelection()
+                list_widget.list_widget.viewport().update()
+                
         list_widget.clear_list()
 
-        tasks = self.task_handler.get_sorted_tasks(task_type)
+        # 获取排序后的任务列表
+        all_tasks = self.task_handler.get_sorted_tasks(task_type)
         
         # 应用搜索和筛选
-        filtered_tasks = self.filter_tasks(tasks)
+        filtered_tasks = self.filter_tasks(all_tasks)
         task_count = len(filtered_tasks)
+
+        # 存储过滤后的任务到UI小部件中
+        if not hasattr(self, 'filtered_tasks_cache'):
+            self.filtered_tasks_cache = {}
+        self.filtered_tasks_cache[task_type] = filtered_tasks
 
         group_widget = getattr(self, f"{task_type}_group")
         group_widget.setTitle(f"{group_widget.title().split('(')[0]}({task_count})")
@@ -793,13 +864,24 @@ class MainWindow(QMainWindow):
                 is_overdue=(task_type == "overdue"),
                 is_done=(task_type == "done"),
                 create_time=task.get('create_time', None),
-                deadline=task.get('deadline', None)
+                deadline=task.get('deadline', None),
+                task_data=task  # 传递完整的任务数据引用
             )
             
-        # 恢复滚动位置
+        # 恢复滚动位置和选中状态
         if hasattr(list_widget, 'restore_scroll_position'):
-            # 延迟恢复滚动位置，确保列表项完全渲染后再恢复
-            QTimer.singleShot(10, lambda: list_widget.restore_scroll_position(scroll_pos))
+            # 延迟恢复滚动位置和选中状态，确保列表项完全渲染后再恢复
+            QTimer.singleShot(10, lambda: self._restore_list_state(list_widget, scroll_pos, selected_index))
+            
+    def _restore_list_state(self, list_widget, scroll_pos, selected_index):
+        """恢复列表的滚动位置和选中状态，确保选择状态隔离"""
+        # 先恢复滚动位置
+        if hasattr(list_widget, 'restore_scroll_position'):
+            list_widget.restore_scroll_position(scroll_pos)
+        # 再恢复选中状态
+        if hasattr(list_widget, 'restore_selection'):
+            # 确保只在当前列表内恢复选中状态，不影响其他列表
+            list_widget.restore_selection(selected_index)
 
     def refresh_all_lists(self):
         """刷新所有列表"""
@@ -883,15 +965,50 @@ class MainWindow(QMainWindow):
         print("定时器已启动")
     
     def refresh_time_display(self):
-        """刷新所有任务的时间显示和紧急度样式"""
+        """刷新所有任务的时间显示和紧急度样式
+        
+        优化策略：
+        1. 只有在有新超时任务时才刷新整个列表
+        2. 无新超时任务时，只更新时间显示而不重新构建列表
+        3. 添加用户交互检测，避免在用户点击选择时干扰
+        """
         print(f"[{time.strftime('%H:%M:%S')}] 定时器触发refresh_time_display方法")
+        
+        # 检查是否有用户交互正在进行
+        has_user_interaction = False
+        try:
+            # 检查鼠标是否按下或有键盘修饰键按下
+            mouse_buttons = QApplication.mouseButtons()
+            modifiers = QApplication.keyboardModifiers()
+            has_user_interaction = mouse_buttons != Qt.NoButton or modifiers != Qt.NoModifier
+            
+            # 检查任何任务列表是否有选中项正在变更
+            for task_type in ['todo', 'overdue', 'done']:
+                list_widget = getattr(self, f"{task_type}_list", None)
+                if list_widget and hasattr(list_widget, 'list_widget'):
+                    if list_widget.list_widget.hasFocus():
+                        has_user_interaction = True
+                        break
+        except Exception as e:
+            print(f"检查用户交互状态时出错: {e}")
+        
+        # 如果检测到用户交互，延迟刷新以避免干扰
+        if has_user_interaction:
+            print(f"[{time.strftime('%H:%M:%S')}] 检测到用户交互，延迟刷新")
+            # 延迟100毫秒后再次尝试刷新
+            QTimer.singleShot(100, self.refresh_time_display)
+            return
+        
         # 检查超时任务并移动
         print(f"[{time.strftime('%H:%M:%S')}] 开始调用check_overdue_tasks")
         newly_overdue_tasks = self.task_handler.check_overdue_tasks()
         print(f"[{time.strftime('%H:%M:%S')}] check_overdue_tasks调用完成")
         
         # 发送新超时任务的托盘通知
+        need_refresh_lists = False
         if newly_overdue_tasks and len(newly_overdue_tasks) > 0:
+            need_refresh_lists = True
+            
             if len(newly_overdue_tasks) == 1:
                 task = newly_overdue_tasks[0]
                 message = f"'{task['name']}'\n已从待办转移到超时列表\n截止时间: {task['deadline']}"
@@ -906,12 +1023,38 @@ class MainWindow(QMainWindow):
                 message = f"共有{len(newly_overdue_tasks)}个任务已超时\n{task_details}"
                 self.show_system_tray_message("多个任务已超时", message)
         
-        # 关键修复：任务可能已经被移动，需要重新加载并显示任务列表
-        # 重新刷新待办和超时列表
-        self.refresh_list("todo")
-        self.refresh_list("overdue")
-        print(f"[{time.strftime('%H:%M:%S')}] 已重新刷新任务列表显示")
+        # 只有在必要时（有新超时任务）才刷新整个列表
+        if need_refresh_lists:
+            print(f"[{time.strftime('%H:%M:%S')}] 检测到新的超时任务，重新刷新任务列表显示")
+            # 保存所有列表的当前选择状态
+            selection_states = {}
+            for task_type in ['todo', 'overdue', 'done']:
+                list_widget = getattr(self, f"{task_type}_list", None)
+                if list_widget and hasattr(list_widget, 'save_selection'):
+                    selection_states[task_type] = list_widget.save_selection()
+            
+            # 重新刷新待办和超时列表
+            self.refresh_list("todo")
+            self.refresh_list("overdue")
+            
+            # 恢复选择状态
+            QTimer.singleShot(50, lambda: self._restore_all_selection_states(selection_states))
+        else:
+            # 无新超时任务时，只更新任务的时间显示而不重新构建列表
+            print(f"[{time.strftime('%H:%M:%S')}] 无新超时任务，仅更新时间显示")
+            for task_type in ['todo', 'overdue']:
+                list_widget = getattr(self, f"{task_type}_list", None)
+                if list_widget and hasattr(list_widget, 'update_time_display'):
+                    list_widget.update_time_display()
+        
         print(f"[{time.strftime('%H:%M:%S')}] refresh_time_display方法执行完成")
+    
+    def _restore_all_selection_states(self, selection_states):
+        """恢复所有任务列表的选择状态"""
+        for task_type, selected_index in selection_states.items():
+            list_widget = getattr(self, f"{task_type}_list", None)
+            if list_widget and hasattr(list_widget, 'restore_selection') and selected_index >= 0:
+                list_widget.restore_selection(selected_index)
     
     def exit_app(self):
         """退出应用"""

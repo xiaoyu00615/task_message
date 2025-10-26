@@ -94,6 +94,34 @@ class TaskHandler:
             self.data_manager.save_tasks(self.tasks)
             return True
         return False
+        
+    def mark_task_done_by_identifier(self, task_type, create_time, task_name):
+        """通过任务标识（创建时间和名称）标记任务为完成
+        
+        这个方法解决了定时器刷新导致索引变化的问题，通过唯一标识找到正确的任务
+        """
+        if task_type not in self.tasks:
+            return False
+            
+        # 遍历任务列表，查找匹配的任务
+        task_index = -1
+        for i, task in enumerate(self.tasks[task_type]):
+            # 优先使用创建时间和名称进行精确匹配
+            if create_time and task.get('create_time') == create_time:
+                if task['name'] == task_name:
+                    task_index = i
+                    break
+            # 如果没有创建时间或不匹配，则尝试仅使用名称匹配
+            elif task['name'] == task_name:
+                # 只有在没有找到精确匹配时才使用名称匹配
+                if task_index == -1:
+                    task_index = i
+        
+        # 如果找到匹配的任务，则标记为完成
+        if task_index != -1:
+            return self.mark_as_done(task_type, task_index)
+        
+        return False
 
     def delete_task(self, task_type, index):
         """删除指定任务"""
@@ -101,6 +129,34 @@ class TaskHandler:
             self.tasks[task_type].pop(index)
             self.data_manager.save_tasks(self.tasks)
             return True
+        return False
+        
+    def delete_task_by_identifier(self, task_type, create_time, task_name):
+        """通过任务标识（创建时间和名称）删除任务
+        
+        这个方法解决了定时器刷新导致索引变化的问题，通过唯一标识找到正确的任务
+        """
+        if task_type not in self.tasks:
+            return False
+            
+        # 遍历任务列表，查找匹配的任务
+        task_index = -1
+        for i, task in enumerate(self.tasks[task_type]):
+            # 优先使用创建时间和名称进行精确匹配
+            if create_time and task.get('create_time') == create_time:
+                if task['name'] == task_name:
+                    task_index = i
+                    break
+            # 如果没有创建时间或不匹配，则尝试仅使用名称匹配
+            elif task['name'] == task_name:
+                # 只有在没有找到精确匹配时才使用名称匹配
+                if task_index == -1:
+                    task_index = i
+        
+        # 如果找到匹配的任务，则删除
+        if task_index != -1:
+            return self.delete_task(task_type, task_index)
+        
         return False
 
     def check_overdue_tasks(self):

@@ -7,8 +7,8 @@ class ConfigManager:
     def __init__(self, config_path="config.json"):
         self.config_path = config_path
         self.default_config = {
-            "window_width": 1000,
-            "window_height": 700,
+            "window_width": 1600,
+            "window_height": 800,
             "show_notifications": True,  # 是否显示提示信息
             "update_interval": 300,  # 数据更新时间间隔（秒），默认5分钟(300秒)
             "categories": ["工作", "学习", "生活", "其他"],  # 默认任务类别

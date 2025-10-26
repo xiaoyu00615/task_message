@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QListWidget,
                              QPushButton, QGroupBox, QHBoxLayout,
                              QListWidgetItem, QLabel, QProgressBar)
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtCore import Qt, QSize, QEvent
 from PyQt5.QtGui import QFont, QColor, QPalette
 from datetime import datetime
 
@@ -42,7 +42,7 @@ def format_time_display(days, hours, minutes, seconds, is_overdue=False):
 
 
 class TaskItemWidget(QWidget):
-    def __init__(self, text, index, parent=None, urgency=1, is_overdue=False, is_done=False, create_time=None, deadline=None, done_time=None):
+    def __init__(self, text, index, parent=None, urgency=1, is_overdue=False, is_done=False, create_time=None, deadline=None, done_time=None, task_data=None):
         super().__init__(parent)
         self.index = index
         self.urgency = urgency
@@ -51,13 +51,31 @@ class TaskItemWidget(QWidget):
         self.create_time = create_time
         self.deadline = deadline
         self.done_time = done_time
+        self.task_data = task_data  # 存储完整的任务数据引用
         self.setAutoFillBackground(True)
+        self.setMouseTracking(True)  # 启用鼠标跟踪
+        # 确保小部件能接收鼠标事件
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setFocusPolicy(Qt.StrongFocus)
         self.init_ui(text)
+    
+    def eventFilter(self, source, event):
+        """事件过滤器，捕获所有鼠标事件并确保选中状态"""
+        # 如果是鼠标按下事件，重新触发选择
+        if event.type() == QEvent.MouseButtonPress:
+            self.mousePressEvent(event)
+            return True
+        return super().eventFilter(source, event)
+    
+    def install_self_event_filter(self):
+        """为自身安装事件过滤器"""
+        self.installEventFilter(self)
 
     def init_ui(self, text):
         # 统一浅蓝色背景
         self.setStyleSheet("""
             padding: 0px;
+            background-color: transparent;
         """)
 
         main_layout = QHBoxLayout(self)
@@ -321,6 +339,9 @@ class TaskItemWidget(QWidget):
 
         main_layout.addLayout(content_layout)
         main_layout.addStretch(1)
+        
+        # 为所有子控件安装事件过滤器，确保点击任何区域都能选中任务项
+        self._install_event_filters_on_children()
 
         # 已完成任务添加删除线（不改变颜色）
         if self.is_done:
@@ -330,6 +351,86 @@ class TaskItemWidget(QWidget):
                     font = widget.font()
                     font.setStrikeOut(True)
                     widget.setFont(font)
+    
+    def mousePressEvent(self, event):
+        """增强的鼠标按下事件处理，确保可靠选中对应的QListWidgetItem"""
+        # 调用父类方法
+        super().mousePressEvent(event)
+        
+        # 核心逻辑：选中对应的任务项
+        self._select_task_item()
+        
+        # 确保事件传播
+        event.accept()
+    
+    def _select_task_item(self):
+        """确保选中对应的QListWidgetItem的核心方法"""
+        # 获取QListWidget的多种方法，增加可靠性
+        list_widget = None
+        
+        # 方法1: 通过父组件链查找
+        parent_widget = self.parent()
+        while parent_widget:
+            if isinstance(parent_widget, QListWidget):
+                list_widget = parent_widget
+                break
+            parent_widget = parent_widget.parent()
+        
+        # 方法2: 如果方法1失败，尝试通过顶级窗口查找
+        if not list_widget:
+            # 尝试获取QListWidgetItem
+            item = QListWidgetItem()
+            # 这是一个后备方法，尝试从TaskListWidget中获取
+            grandparent = self.parent()
+            if grandparent:
+                # 尝试从TaskListWidget中获取list_widget
+                list_widget = getattr(grandparent, 'list_widget', None)
+        
+        if list_widget:
+            # 健壮的查找算法，找到当前widget对应的item
+            found_item = None
+            for i in range(list_widget.count()):
+                item = list_widget.item(i)
+                if item and list_widget.itemWidget(item) is self:
+                    found_item = item
+                    break
+            
+            if found_item:
+                # 立即清除所有选择
+                list_widget.clearSelection()
+                # 直接设置选中项
+                list_widget.setCurrentItem(found_item)
+                # 强制更新视图
+                list_widget.viewport().update()
+                # 确保选择状态立即生效
+                list_widget.setFocus()
+                return True
+        
+        return False
+    
+    def _install_event_filters_on_children(self):
+        """为所有子控件安装事件过滤器，确保点击任何区域都能选中任务项"""
+        for child in self.findChildren(QLabel):
+            # 移除文本选择功能，让点击能直接触发选择
+            child.setTextInteractionFlags(Qt.NoTextInteraction)
+            # 安装事件过滤器
+            child.installEventFilter(self)
+        
+        for child in self.findChildren(QProgressBar):
+            child.installEventFilter(self)
+    
+    def eventFilter(self, source, event):
+        """事件过滤器，捕获所有子控件的鼠标事件并确保选中状态"""
+        # 捕获所有鼠标按下事件
+        if event.type() == QEvent.MouseButtonPress:
+            # 调用核心选择方法
+            self._select_task_item()
+            # 阻止事件进一步传播，避免冲突
+            return True
+        # 捕获鼠标点击事件
+        elif event.type() == QEvent.MouseButtonRelease:
+            return True
+        return super().eventFilter(source, event)
 
     def set_progress_bar_style(self, color=None):
         """统一设置进度条样式和大小，背景使用对应紧急度的淡色，进度填充使用紧急度颜色，不使用黑色文本"""
@@ -770,6 +871,14 @@ class TaskListWidget(QWidget):
                 border-radius: 6px;
             }
         """)
+        
+        # 连接选择事件信号，增强选择隔离性
+        self.list_widget.itemSelectionChanged.connect(self.on_item_selection_changed)
+        
+        # 设置焦点策略
+        self.list_widget.setFocusPolicy(Qt.StrongFocus)
+        self.list_widget.focusInEvent = lambda event: self.on_focus_in(event)
+        
         layout.addWidget(self.list_widget)
 
         # 按钮样式（增大尺寸）
@@ -798,7 +907,7 @@ class TaskListWidget(QWidget):
         self.delete_btn.setStyleSheet(btn_style)
         layout.addWidget(self.delete_btn)
 
-    def add_task_item(self, task_text, index, urgency=1, is_overdue=False, is_done=False, create_time=None, deadline=None, done_time=None):
+    def add_task_item(self, task_text, index, urgency=1, is_overdue=False, is_done=False, create_time=None, deadline=None, done_time=None, task_data=None):
         task_widget = TaskItemWidget(
             task_text,
             index,
@@ -807,12 +916,19 @@ class TaskListWidget(QWidget):
             is_done=is_done,
             create_time=create_time,
             deadline=deadline,
-            done_time=done_time
+            done_time=done_time,
+            task_data=task_data
         )
+        # 安装事件过滤器以增强事件捕获
+        task_widget.install_self_event_filter()
+        
         item = QListWidgetItem()
         item.setSizeHint(QSize(0, 200))  # 进一步增加高度，确保所有任务项（包括第三项）都能完全显示所有内容
         self.list_widget.addItem(item)
         self.list_widget.setItemWidget(item, task_widget)
+        
+        # 确保QListWidgetItem能够正确响应鼠标事件
+        item.setFlags(item.flags() | Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 
     def clear_list(self):
         self.list_widget.clear()
@@ -820,6 +936,15 @@ class TaskListWidget(QWidget):
     def get_selected_index(self):
         selected = self.list_widget.selectedItems()
         return self.list_widget.row(selected[0]) if selected else -1
+        
+    def get_selected_task_data(self):
+        """获取选中项的任务数据"""
+        selected = self.list_widget.selectedItems()
+        if selected:
+            item_widget = self.list_widget.itemWidget(selected[0])
+            if hasattr(item_widget, 'task_data'):
+                return item_widget.task_data
+        return None
 
     def save_scroll_position(self):
         """保存当前列表的滚动位置"""
@@ -828,11 +953,74 @@ class TaskListWidget(QWidget):
     def restore_scroll_position(self, position):
         """恢复列表的滚动位置"""
         self.list_widget.verticalScrollBar().setValue(position)
+    
+    def save_selection(self):
+        """保存当前选中项的索引"""
+        selected = self.list_widget.selectedItems()
+        return self.list_widget.row(selected[0]) if selected else -1
+    
+    def on_item_selection_changed(self):
+        """处理任务选择变更事件，确保选择状态隔离"""
+        # 当此列表有选择时，清除其他列表的选择状态
+        if self.list_widget.selectedItems():
+            # 尝试通过父窗口获取所有任务列表实例
+            parent = self.parent()
+            if parent:
+                for task_type in ['todo', 'overdue', 'done']:
+                    if task_type != self.task_type:
+                        # 尝试获取其他任务列表
+                        other_list_widget = getattr(parent, f"{task_type}_list", None)
+                        if other_list_widget and hasattr(other_list_widget, 'list_widget'):
+                            # 清除其他列表的选择状态
+                            selection_model = other_list_widget.list_widget.selectionModel()
+                            if selection_model:
+                                selection_model.clearSelection()
+        
+    def on_focus_in(self, event):
+        """处理焦点进入事件，增强列表间的隔离性"""
+        # 当此列表获得焦点时，确保其他列表没有选中项
+        self.on_item_selection_changed()
+        # 调用原始的焦点事件处理
+        super(QListWidget, self.list_widget).focusInEvent(event)
+        
+    def restore_selection(self, index):
+        """恢复列表的选中状态但不自动滚动，确保选择状态在正确的列表内恢复"""
+        # 添加健壮性检查
+        if not hasattr(self, 'list_widget') or self.list_widget is None:
+            return
+            
+        if 0 <= index < self.list_widget.count():
+            item = self.list_widget.item(index)
+            if item:
+                # 使用selectionModel设置选中状态而不触发自动滚动
+                selection_model = self.list_widget.selectionModel()
+                if selection_model:
+                    # 关键修复：确保清除所有选择状态，避免跨列表选择混淆
+                    selection_model.clearSelection()
+                    
+                    # 确保选择成功
+                    selection_success = selection_model.select(self.list_widget.indexFromItem(item), selection_model.Select)
+                    
+                    # 强制更新列表状态
+                    self.list_widget.viewport().update()
+                    
+                    # 获取实际的选中项并验证，确保选中状态确实被应用到正确的项目
+                    selected_items = self.list_widget.selectedItems()
+                    if selected_items and self.list_widget.row(selected_items[0]) == index:
+                        # 验证成功，选择状态正确应用
+                        pass
+                    else:
+                        # 验证失败，记录日志但不抛出异常
+                        print(f"TaskListWidget ({self.task_type}): 选中状态恢复验证失败")
 
     def update_time_display(self):
-        """更新列表中所有任务的时间显示，同时保留滚动位置"""
-        # 保存当前滚动位置
+        """更新列表中所有任务的时间显示，同时保留滚动位置和选中状态"""
+        # 保存当前滚动位置和选中状态
         scroll_pos = self.save_scroll_position()
+        selected_index = self.save_selection()
+        
+        # 检查当前列表是否有焦点
+        has_focus = self.list_widget.hasFocus()
         
         # 更新所有任务的时间显示
         for row in range(self.list_widget.count()):
@@ -843,3 +1031,12 @@ class TaskListWidget(QWidget):
         
         # 恢复滚动位置
         self.restore_scroll_position(scroll_pos)
+        
+        # 只有在列表没有焦点或有选中项时才恢复选中状态
+        # 避免在用户正在交互时干扰选择
+        if selected_index >= 0 and (not has_focus or self.list_widget.selectedItems()):
+            self.restore_selection(selected_index)
+        
+        # 如果之前有焦点，恢复焦点
+        if has_focus:
+            self.list_widget.setFocus()

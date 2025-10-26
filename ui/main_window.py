@@ -1,4 +1,5 @@
 import sys
+import time
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                              QGroupBox, QFormLayout, QLineEdit, QComboBox,
                              QDateTimeEdit, QPushButton, QSplitter, QMessageBox,
@@ -767,6 +768,12 @@ class MainWindow(QMainWindow):
         
     def refresh_list(self, task_type):
         list_widget = getattr(self, f"{task_type}_list")
+        
+        # 保存当前滚动位置
+        scroll_pos = 0
+        if hasattr(list_widget, 'save_scroll_position'):
+            scroll_pos = list_widget.save_scroll_position()
+            
         list_widget.clear_list()
 
         tasks = self.task_handler.get_sorted_tasks(task_type)
@@ -784,8 +791,15 @@ class MainWindow(QMainWindow):
                 index=index,
                 urgency=task["urgency"],
                 is_overdue=(task_type == "overdue"),
-                is_done=(task_type == "done")
+                is_done=(task_type == "done"),
+                create_time=task.get('create_time', None),
+                deadline=task.get('deadline', None)
             )
+            
+        # 恢复滚动位置
+        if hasattr(list_widget, 'restore_scroll_position'):
+            # 延迟恢复滚动位置，确保列表项完全渲染后再恢复
+            QTimer.singleShot(10, lambda: list_widget.restore_scroll_position(scroll_pos))
 
     def refresh_all_lists(self):
         """刷新所有列表"""
@@ -869,22 +883,35 @@ class MainWindow(QMainWindow):
         print("定时器已启动")
     
     def refresh_time_display(self):
-        """刷新任务时间显示，但不进行完整的列表排序和保存"""
-        # 只刷新待办和超时列表的显示，避免频繁的完整刷新影响性能
-        print(f"定时器触发刷新时间显示: {time.strftime('%H:%M:%S')}")  # 添加调试日志
-        for task_type in ["todo", "overdue"]:
-            list_widget = getattr(self, f"{task_type}_list")
-            list_widget.clear_list()
-            
-            tasks = self.task_handler.get_sorted_tasks(task_type)  # 这里会更新紧急度
-            for index, task in enumerate(tasks, 1):
-                list_widget.add_task_item(
-                    self.format_task_text(task),
-                    index=index,
-                    urgency=task["urgency"],
-                    is_overdue=(task_type == "overdue"),
-                    is_done=(task_type == "done")
-                )
+        """刷新所有任务的时间显示和紧急度样式"""
+        print(f"[{time.strftime('%H:%M:%S')}] 定时器触发refresh_time_display方法")
+        # 检查超时任务并移动
+        print(f"[{time.strftime('%H:%M:%S')}] 开始调用check_overdue_tasks")
+        newly_overdue_tasks = self.task_handler.check_overdue_tasks()
+        print(f"[{time.strftime('%H:%M:%S')}] check_overdue_tasks调用完成")
+        
+        # 发送新超时任务的托盘通知
+        if newly_overdue_tasks and len(newly_overdue_tasks) > 0:
+            if len(newly_overdue_tasks) == 1:
+                task = newly_overdue_tasks[0]
+                message = f"'{task['name']}'\n已从待办转移到超时列表\n截止时间: {task['deadline']}"
+                self.show_system_tray_message("任务已超时", message)
+            else:
+                # 多个任务时显示简洁信息
+                task_details = ""
+                for i, task in enumerate(newly_overdue_tasks[:3], 1):  # 最多显示前3个任务详情
+                    task_details += f"{i}. '{task['name']}'\n"
+                if len(newly_overdue_tasks) > 3:
+                    task_details += f"... 还有{len(newly_overdue_tasks)-3}个任务"
+                message = f"共有{len(newly_overdue_tasks)}个任务已超时\n{task_details}"
+                self.show_system_tray_message("多个任务已超时", message)
+        
+        # 关键修复：任务可能已经被移动，需要重新加载并显示任务列表
+        # 重新刷新待办和超时列表
+        self.refresh_list("todo")
+        self.refresh_list("overdue")
+        print(f"[{time.strftime('%H:%M:%S')}] 已重新刷新任务列表显示")
+        print(f"[{time.strftime('%H:%M:%S')}] refresh_time_display方法执行完成")
     
     def exit_app(self):
         """退出应用"""

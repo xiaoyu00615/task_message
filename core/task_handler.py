@@ -1,4 +1,5 @@
 from datetime import datetime, date, timedelta
+import time
 
 
 class TaskHandler:
@@ -14,6 +15,7 @@ class TaskHandler:
         """
         计算任务剩余时间
         返回格式化的倒计时字符串，如"剩余: 2天 3小时 45分钟"或"已超时: 1小时 30分钟"
+        当剩余时间为0分钟时开始显示秒数
         """
         if task["deadline"] == "无截止日期":
             return "无截止日期"
@@ -36,6 +38,7 @@ class TaskHandler:
                 days = int(total_seconds // (24 * 3600))
                 hours = int((total_seconds % (24 * 3600)) // 3600)
                 minutes = int((total_seconds % 3600) // 60)
+                seconds = int(total_seconds % 60)
                 
                 parts = []
                 if days > 0:
@@ -44,6 +47,9 @@ class TaskHandler:
                     parts.append(f"{hours}小时")
                 if minutes > 0 or not parts:  # 至少显示分钟
                     parts.append(f"{minutes}分钟")
+                # 当小时和天都为0时，显示秒数
+                if not days and not hours:
+                    parts.append(f"{seconds}秒")
                 
                 return f"已超时: {' '.join(parts)}"
             else:
@@ -51,6 +57,7 @@ class TaskHandler:
                 days = int(total_seconds // (24 * 3600))
                 hours = int((total_seconds % (24 * 3600)) // 3600)
                 minutes = int((total_seconds % 3600) // 60)
+                seconds = int(total_seconds % 60)
                 
                 parts = []
                 if days > 0:
@@ -59,6 +66,9 @@ class TaskHandler:
                     parts.append(f"{hours}小时")
                 if minutes > 0 or not parts:  # 至少显示分钟
                     parts.append(f"{minutes}分钟")
+                # 当小时和天都为0时，显示秒数
+                if not days and not hours:
+                    parts.append(f"{seconds}秒")
                 
                 return f"剩余: {' '.join(parts)}"
         except Exception as e:
@@ -94,9 +104,11 @@ class TaskHandler:
         return False
 
     def check_overdue_tasks(self):
-        """检查并移动超时任务"""
+        """检查并移动超时任务，返回新超时的任务列表"""
+        print(f"[{time.strftime('%H:%M:%S')}] 正在检查超时任务...")
         today = date.today()
         overdue_indices = []
+        newly_overdue_tasks = []  # 存储新超时的任务
 
         # 检查待办任务中的超时任务
         for i, task in enumerate(self.tasks["todo"]):
@@ -110,16 +122,27 @@ class TaskHandler:
                         deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d")
                     
                     if deadline_datetime < datetime.now():
+                        print(f"[{time.strftime('%H:%M:%S')}] 发现超时任务: {task['name']}, 截止时间: {task['deadline']}")
                         overdue_indices.append(i)
-                except:
+                        newly_overdue_tasks.append(task)
+                except Exception as e:
+                    print(f"[{time.strftime('%H:%M:%S')}] 解析任务日期出错: {task['name']}, 错误: {e}")
                     continue
 
         # 逆序移除避免索引问题
         for i in sorted(overdue_indices, reverse=True):
             task = self.tasks["todo"].pop(i)
             self.tasks["overdue"].append(task)
+            print(f"[{time.strftime('%H:%M:%S')}] 已将任务 '{task['name']}' 从待办移至超时列表")
 
-        self.data_manager.save_tasks(self.tasks)
+        if overdue_indices:
+            print(f"[{time.strftime('%H:%M:%S')}] 共移动 {len(overdue_indices)} 个超时任务")
+            self.data_manager.save_tasks(self.tasks)
+            print(f"[{time.strftime('%H:%M:%S')}] 已保存更新后的任务数据")
+        else:
+            print(f"[{time.strftime('%H:%M:%S')}] 未发现需要移动的超时任务")
+            
+        return newly_overdue_tasks  # 返回新超时的任务列表
 
     def auto_promote_urgency(self):
         """根据截止日期自动提升任务紧急度"""
@@ -177,21 +200,53 @@ class TaskHandler:
         return promoted_tasks  # 返回被提升的任务列表
 
     def get_sorted_tasks(self, task_type):
-        """获取按紧急度+星级智能排序的任务列表"""
+        """获取按紧急度+星级+剩余时间智能排序的任务列表"""
         # 先检查并更新紧急度
         if task_type == "todo":
             self.auto_promote_urgency()
 
+        # 定义排序键函数，添加剩余时间作为第三排序条件
+        def get_sort_key(task):
+            # 第一条件：无截止日期的任务排在最后
+            has_deadline = task["deadline"] != "无截止日期"
+            
+            # 第二条件：紧急度（1最优先）
+            urgency = task["urgency"] if has_deadline else 0
+            
+            # 第三条件：重要度降序（3星最优先）
+            importance = -task["importance"]
+            
+            # 第四条件：剩余时间（对于有截止日期的任务）
+            remaining_time = 0
+            if has_deadline:
+                try:
+                    # 尝试解析包含时间的格式
+                    try:
+                        deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        # 回退到旧格式（仅日期）
+                        deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d")
+                    
+                    # 计算剩余时间秒数
+                    now = datetime.now()
+                    remaining_seconds = (deadline_datetime - now).total_seconds()
+                    remaining_time = remaining_seconds
+                except Exception:
+                    # 日期解析错误时，给一个较大的值，让它排在后面
+                    remaining_time = float('inf')
+            
+            # 复合排序键：无截止日期标记, 紧急度, 重要度, 剩余时间
+            return (not has_deadline, urgency, importance, remaining_time)
+
         # 智能排序核心逻辑：
         # 1. 优先将无截止日期的任务排在最后
-        # 2. 有截止日期的任务：按紧急度升序（1最优先），紧急度相同时按重要度降序
-        # 3. 无截止日期的任务：直接按重要度降序（3星最优先）
+        # 2. 有截止日期的任务：按紧急度升序（1最优先）
+        # 3. 紧急度相同时按重要度降序（3星最优先）
+        # 4. 紧急度和重要度都相同时按剩余时间升序（剩余时间少的优先）
         if task_type in ["todo", "overdue"]:
             return sorted(
                 self.tasks[task_type],
-                key=lambda x: (x["deadline"] == "无截止日期", 
-                             x["urgency"] if x["deadline"] != "无截止日期" else 0, 
-                             -x["importance"])  # 复合排序键
+                key=get_sort_key
             )
         # 已完成任务按完成时间倒序
         elif task_type == "done":

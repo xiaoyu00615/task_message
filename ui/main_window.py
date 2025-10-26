@@ -226,6 +226,7 @@ class MainWindow(QMainWindow):
 
     def create_input_panel(self):
         """创建任务输入面板（优化紧急度选项）"""
+        from PyQt5.QtWidgets import QComboBox
         panel = QGroupBox("添加新任务")
         layout = QFormLayout()
 
@@ -260,12 +261,31 @@ class MainWindow(QMainWindow):
         quick_deadline_layout.addWidget(self.no_deadline_btn)
         deadline_layout.addLayout(quick_deadline_layout)
         
-        layout.addRow("截止日期时间:", deadline_layout)
+        layout.addRow("截止日期:", deadline_layout)
 
         # 重要等级（1-3星）
         self.importance_input = QComboBox()
         self.importance_input.addItems(["1星 (一般)", "2星 (重要)", "3星 (非常重要)"])
         layout.addRow("重要等级:", self.importance_input)
+        
+        # 任务类别
+        self.category_input = QComboBox()
+        self.category_input.addItems(self.config["categories"])
+        layout.addRow("任务类别:", self.category_input)
+        
+        # 标签选择（改为下拉选择框）
+        self.tags_input = QComboBox()
+        self.tags_input.setEditable(False)  # 不可编辑，只能选择
+        self.tags_input.setMinimumWidth(150)
+        
+        # 添加空选项作为默认
+        self.tags_input.addItem("（无标签）")
+        
+        # 添加标签项
+        for tag in self.config["tags"]:
+            self.tags_input.addItem(tag)
+        
+        layout.addRow("选择标签:", self.tags_input)
 
         # 紧急度（1-5级）- 优化显示
         self.urgency_input = QComboBox()
@@ -359,6 +379,14 @@ class MainWindow(QMainWindow):
         except (ValueError, IndexError) as e:
             QMessageBox.warning(self, "输入错误", f"请选择有效的紧急度：{str(e)}")
             return
+        
+        # 获取任务类别和标签（下拉选择框）
+        category = self.category_input.currentText()
+        tags = []
+        if hasattr(self, 'tags_input'):
+            selected_tag = self.tags_input.currentText()
+            if selected_tag and selected_tag != "（无标签）":
+                tags = [selected_tag]  # 转换为列表格式以兼容现有代码
 
         # 计算任务应有的紧急度（基于截止时间）
         proper_urgency = urgency  # 默认使用用户设置的紧急度
@@ -385,7 +413,9 @@ class MainWindow(QMainWindow):
             "name": name,
             "deadline": deadline,
             "importance": importance,
-            "urgency": urgency
+            "urgency": urgency,
+            "category": category,
+            "tags": tags
         })
 
         # 只有当需要提升紧急度时才设置创建任务标志
@@ -442,7 +472,7 @@ class MainWindow(QMainWindow):
             self.show_system_tray_message("任务已删除", f"已删除：{task_name}")
 
     def format_task_text(self, task):
-        """格式化任务显示文本，包含创建时间、截止日期和倒计时信息"""
+        """格式化任务显示文本，包含创建时间、截止日期、类别、标签和倒计时信息"""
         stars = "★" * task["importance"] + "☆" * (3 - task["importance"])
         # 计算并获取倒计时信息
         time_remaining = self.task_handler.calculate_time_remaining(task)
@@ -451,12 +481,26 @@ class MainWindow(QMainWindow):
         create_time = task.get('create_time', '')
         deadline = task.get('deadline', '无截止日期')
         
-        return (
+        # 构建任务文本
+        text = (
             f"{task['name']}\n" 
             f"重要度: {stars} | 紧急度: {task['urgency']}\n" 
-            f"创建时间: {create_time} | 截止日期: {deadline}\n" 
-            f"{time_remaining}"
+            f"创建时间: {create_time} | 截止日期: {deadline}\n"
         )
+        
+        # 添加类别信息
+        if 'category' in task and task['category']:
+            text += f"类别: {task['category']}\n"
+        
+        # 添加标签信息
+        if 'tags' in task and task['tags']:
+            tags_text = ', '.join(task['tags'])
+            text += f"标签: {tags_text}\n"
+        
+        # 添加倒计时信息（最后一行，保持原有的颜色逻辑）
+        text += f"{time_remaining}"
+        
+        return text
 
     def refresh_list(self, task_type):
         list_widget = getattr(self, f"{task_type}_list")

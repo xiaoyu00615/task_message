@@ -10,7 +10,9 @@ class ConfigManager:
             "window_width": 1000,
             "window_height": 700,
             "show_notifications": True,  # 是否显示提示信息
-            "update_interval": 300  # 数据更新时间间隔（秒），默认5分钟(300秒)
+            "update_interval": 300,  # 数据更新时间间隔（秒），默认5分钟(300秒)
+            "categories": ["工作", "学习", "生活", "其他"],  # 默认任务类别
+            "tags": ["重要", "紧急", "常规", "计划"]  # 默认标签列表
         }
 
     def load_config(self):

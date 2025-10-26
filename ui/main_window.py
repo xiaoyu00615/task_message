@@ -610,7 +610,8 @@ class MainWindow(QMainWindow):
         text = (
             f"{task['name']}\n" 
             f"重要度: {stars} | 紧急度: {task['urgency']}\n" 
-            f"创建时间: {create_time} | 截止日期: {deadline}\n"
+            f"创建时间: {create_time}\n"
+            f"截止日期: {deadline}\n"
         )
         
         # 添加类别信息

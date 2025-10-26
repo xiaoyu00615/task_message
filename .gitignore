@@ -83,3 +83,5 @@ config.json
 .directory
 .Trash-*
 .nfs*
+
+plan

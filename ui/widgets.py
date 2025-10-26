@@ -263,7 +263,7 @@ class TaskListWidget(QWidget):
             is_done=is_done
         )
         item = QListWidgetItem()
-        item.setSizeHint(QSize(0, 120))  # 增加高度以容纳类别和标签信息
+        item.setSizeHint(QSize(0, 150))  # 增加高度以容纳更多信息，避免文本遮挡
         self.list_widget.addItem(item)
         self.list_widget.setItemWidget(item, task_widget)
 

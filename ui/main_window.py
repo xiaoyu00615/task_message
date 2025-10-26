@@ -3,7 +3,8 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                              QGroupBox, QFormLayout, QLineEdit, QComboBox,
                              QDateTimeEdit, QPushButton, QSplitter, QMessageBox,
                              QSystemTrayIcon, QMenu, QAction, qApp, QDialog,
-                             QSpinBox, QLabel, QCheckBox, QSizePolicy, QGridLayout)
+                             QSpinBox, QLabel, QCheckBox, QSizePolicy, QGridLayout,
+                             QTabWidget)
 from PyQt5.QtCore import Qt, QDate, QDateTime, QThread, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
 from datetime import datetime, date, timedelta
@@ -15,6 +16,7 @@ from core.data_manager import DataManager
 from core.task_handler import TaskHandler
 from core.config_manager import ConfigManager
 from ui.widgets import TaskListWidget
+from ui.statistics_widget import StatisticsWidget
 
 
 class HotkeyListener(QThread):
@@ -203,7 +205,14 @@ class MainWindow(QMainWindow):
         left_widget.setLayout(left_layout)
         main_layout.addWidget(left_widget)
 
-        # 右侧：任务列表区域（使用分割器）
+        # 右侧：使用标签页切换任务列表和统计界面
+        self.tab_widget = QTabWidget()
+        
+        # 创建任务列表标签页内容
+        task_list_widget = QWidget()
+        task_list_layout = QHBoxLayout(task_list_widget)
+        
+        # 任务列表区域（使用分割器）
         splitter = QSplitter(Qt.Horizontal)
 
         # 待办任务列表（带数量统计）
@@ -234,7 +243,19 @@ class MainWindow(QMainWindow):
 
         # 设置分割器比例
         splitter.setSizes([300, 300, 300])
-        main_layout.addWidget(splitter, 1)
+        
+        # 添加分割器到任务列表标签页布局
+        task_list_layout.addWidget(splitter)
+        
+        # 创建统计界面标签页
+        self.statistics_widget = StatisticsWidget(self.task_handler)
+        
+        # 添加标签页
+        self.tab_widget.addTab(task_list_widget, "任务列表")
+        self.tab_widget.addTab(self.statistics_widget, "任务统计")
+        
+        # 添加标签页到主布局
+        main_layout.addWidget(self.tab_widget, 1)
 
     def create_input_panel(self):
         """创建任务输入面板（优化紧急度选项）"""

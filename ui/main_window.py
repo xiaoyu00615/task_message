@@ -3,10 +3,10 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                              QGroupBox, QFormLayout, QLineEdit, QComboBox,
                              QDateTimeEdit, QPushButton, QSplitter, QMessageBox,
                              QSystemTrayIcon, QMenu, QAction, qApp, QDialog,
-                             QSpinBox, QLabel, QCheckBox, QSizePolicy)
+                             QSpinBox, QLabel, QCheckBox, QSizePolicy, QGridLayout)
 from PyQt5.QtCore import Qt, QDate, QDateTime, QThread, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 import time
 from pynput.keyboard import GlobalHotKeys
 import threading
@@ -187,9 +187,21 @@ class MainWindow(QMainWindow):
         main_layout = QHBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
 
-        # 左侧：任务输入区域
+        # 左侧：垂直布局包含输入面板和搜索筛选
+        left_layout = QVBoxLayout()
+        
+        # 添加任务输入区域（放在顶部）
         input_panel = self.create_input_panel()
-        main_layout.addWidget(input_panel)
+        left_layout.addWidget(input_panel)
+        
+        # 添加搜索和筛选面板（放在下面）
+        search_filter_panel = self.create_search_filter_panel()
+        left_layout.addWidget(search_filter_panel)
+        
+        # 创建左侧容器部件并应用布局
+        left_widget = QWidget()
+        left_widget.setLayout(left_layout)
+        main_layout.addWidget(left_widget)
 
         # 右侧：任务列表区域（使用分割器）
         splitter = QSplitter(Qt.Horizontal)
@@ -322,6 +334,119 @@ class MainWindow(QMainWindow):
 
         panel.setLayout(layout)
         panel.setMaximumWidth(320)
+        return panel
+        
+    def create_search_filter_panel(self):
+        """创建搜索和筛选面板（可折叠，三角形指示器）"""
+        # 创建面板并设置为可折叠
+        panel = QGroupBox("搜索和筛选")
+        panel.setCheckable(True)  # 启用可折叠功能
+        panel.setChecked(False)   # 默认折叠状态
+        
+        # 创建内容容器
+        content_widget = QWidget()
+        
+        # 使用表单布局，一行一个筛选项
+        form_layout = QFormLayout(content_widget)
+        form_layout.setVerticalSpacing(8)  # 减小垂直间距
+        form_layout.setHorizontalSpacing(12)  # 减小水平间距
+        form_layout.setFormAlignment(Qt.AlignTop)  # 设置顶部对齐
+        form_layout.setLabelAlignment(Qt.AlignLeft)  # 标签左对齐
+        
+        # 创建搜索输入框
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("输入关键词搜索任务...")
+        self.search_input.setMinimumHeight(28)  # 减小高度
+        self.search_input.textChanged.connect(self.handle_search_filter)  # 实时搜索
+        form_layout.addRow("搜索任务:", self.search_input)
+        
+        # 类别筛选
+        self.category_filter = QComboBox()
+        self.category_filter.addItem("所有类别")
+        self.category_filter.addItems(self.config["categories"])
+        self.category_filter.setMinimumHeight(28)  # 减小高度
+        self.category_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.category_filter.currentIndexChanged.connect(self.handle_search_filter)
+        form_layout.addRow("类别:", self.category_filter)
+        
+        # 标签筛选
+        self.tag_filter = QComboBox()
+        self.tag_filter.addItem("所有标签")
+        self.tag_filter.addItem("无标签")
+        self.tag_filter.addItems(self.config["tags"])
+        self.tag_filter.setMinimumHeight(28)  # 减小高度
+        self.tag_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.tag_filter.currentIndexChanged.connect(self.handle_search_filter)
+        form_layout.addRow("标签:", self.tag_filter)
+        
+        # 重要等级筛选
+        self.importance_filter = QComboBox()
+        self.importance_filter.addItem("所有重要度")
+        self.importance_filter.addItems(["1星 (一般)", "2星 (重要)", "3星 (非常重要)"])
+        self.importance_filter.setMinimumHeight(28)  # 减小高度
+        self.importance_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.importance_filter.currentIndexChanged.connect(self.handle_search_filter)
+        form_layout.addRow("重要等级:", self.importance_filter)
+        
+        # 紧急度筛选
+        self.urgency_filter = QComboBox()
+        self.urgency_filter.addItem("所有紧急度")
+        self.urgency_filter.addItems([
+            "1-最紧急",
+            "2-紧急",
+            "3-中等",
+            "4-较不紧急",
+            "5-最不紧急"
+        ])
+        self.urgency_filter.setMinimumHeight(28)  # 减小高度
+        self.urgency_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.urgency_filter.currentIndexChanged.connect(self.handle_search_filter)
+        form_layout.addRow("紧急度:", self.urgency_filter)
+        
+        # 截止日期筛选
+        self.deadline_filter = QComboBox()
+        self.deadline_filter.addItem("所有截止日期")
+        self.deadline_filter.addItems([
+            "今天",
+            "明天",
+            "本周内",
+            "下周内",
+            "本月内",
+            "无截止日期"
+        ])
+        self.deadline_filter.setMinimumHeight(28)  # 减小高度
+        self.deadline_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.deadline_filter.currentIndexChanged.connect(self.handle_search_filter)
+        form_layout.addRow("截止日期:", self.deadline_filter)
+        
+        # 创建重置按钮
+        reset_button = QPushButton("重置筛选")
+        reset_button.setMinimumHeight(32)  # 减小高度
+        reset_button.setStyleSheet("font-size: 12px;")  # 减小字体
+        reset_button.clicked.connect(self.reset_search_filter)
+        
+        # 创建按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(reset_button)
+        
+        # 添加按钮布局到表单布局
+        form_layout.addRow(button_layout)
+        
+        # 创建面板的主布局
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(content_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # 设置面板布局
+        panel.setLayout(main_layout)
+        
+        # 连接信号，当面板勾选状态改变时更新内容可见性
+        panel.toggled.connect(content_widget.setVisible)
+        
+        # 初始状态下隐藏内容
+        content_widget.setVisible(False)
+        
+        # 返回面板
         return panel
 
     def open_settings(self):
@@ -502,17 +627,136 @@ class MainWindow(QMainWindow):
         
         return text
 
+    def handle_search_filter(self):
+        """处理搜索和筛选操作"""
+        self.refresh_all_lists()
+        
+    def reset_search_filter(self):
+        """重置所有筛选条件"""
+        self.search_input.clear()
+        self.category_filter.setCurrentIndex(0)
+        self.tag_filter.setCurrentIndex(0)
+        self.importance_filter.setCurrentIndex(0)
+        self.urgency_filter.setCurrentIndex(0)
+        self.deadline_filter.setCurrentIndex(0)
+        
+    def filter_tasks(self, tasks):
+        """根据搜索和筛选条件过滤任务列表"""
+        # 获取搜索和筛选条件
+        search_text = self.search_input.text().lower().strip()
+        selected_category = self.category_filter.currentText()
+        selected_tag = self.tag_filter.currentText()
+        selected_importance = self.importance_filter.currentText()
+        selected_urgency = self.urgency_filter.currentText()
+        selected_deadline = self.deadline_filter.currentText()
+        
+        filtered_tasks = []
+        
+        for task in tasks:
+            # 关键词搜索
+            if search_text and search_text not in task["name"].lower():
+                continue
+                
+            # 类别筛选
+            if selected_category != "所有类别" and task.get("category", "") != selected_category:
+                continue
+                
+            # 标签筛选
+            if selected_tag != "所有标签":
+                task_tags = task.get("tags", [])
+                if selected_tag == "无标签" and task_tags:
+                    continue
+                elif selected_tag != "无标签" and selected_tag not in task_tags:
+                    continue
+                    
+            # 重要等级筛选
+            if selected_importance != "所有重要度":
+                importance_level = int(selected_importance.split("星")[0])
+                if task["importance"] != importance_level:
+                    continue
+                    
+            # 紧急度筛选
+            if selected_urgency != "所有紧急度":
+                urgency_level = int(selected_urgency.split("-")[0])
+                if task["urgency"] != urgency_level:
+                    continue
+                    
+            # 截止日期筛选
+            if selected_deadline != "所有截止日期":
+                task_deadline = task.get("deadline", "无截止日期")
+                
+                if selected_deadline == "无截止日期":
+                    if task_deadline != "无截止日期":
+                        continue
+                else:
+                    if task_deadline == "无截止日期":
+                        continue
+                    
+                    # 解析截止日期
+                    try:
+                        # 尝试解析包含时间的格式
+                        try:
+                            deadline_datetime = datetime.strptime(task_deadline, "%Y-%m-%d %H:%M")
+                        except ValueError:
+                            # 回退到旧格式（仅日期）
+                            deadline_datetime = datetime.strptime(task_deadline, "%Y-%m-%d")
+                        
+                        now = datetime.now()
+                        today = now.date()
+                        tomorrow = today + timedelta(days=1)
+                        
+                        # 本周开始和结束（周一到周日）
+                        days_since_monday = today.weekday()
+                        week_start = today - timedelta(days=days_since_monday)
+                        week_end = week_start + timedelta(days=7)
+                        
+                        # 下周开始和结束
+                        next_week_start = week_start + timedelta(days=7)
+                        next_week_end = next_week_start + timedelta(days=7)
+                        
+                        # 本月开始和结束
+                        month_start = date(today.year, today.month, 1)
+                        if today.month == 12:
+                            month_end = date(today.year + 1, 1, 1)
+                        else:
+                            month_end = date(today.year, today.month + 1, 1)
+                        
+                        # 检查截止日期是否符合条件
+                        deadline_date = deadline_datetime.date()
+                        
+                        if selected_deadline == "今天" and deadline_date != today:
+                            continue
+                        elif selected_deadline == "明天" and deadline_date != tomorrow:
+                            continue
+                        elif selected_deadline == "本周内" and not (week_start <= deadline_date < week_end):
+                            continue
+                        elif selected_deadline == "下周内" and not (next_week_start <= deadline_date < next_week_end):
+                            continue
+                        elif selected_deadline == "本月内" and not (month_start <= deadline_date < month_end):
+                            continue
+                    except Exception:
+                        # 日期格式错误，跳过该任务
+                        continue
+                        
+            # 通过所有筛选条件
+            filtered_tasks.append(task)
+            
+        return filtered_tasks
+        
     def refresh_list(self, task_type):
         list_widget = getattr(self, f"{task_type}_list")
         list_widget.clear_list()
 
         tasks = self.task_handler.get_sorted_tasks(task_type)
-        task_count = len(tasks)
+        
+        # 应用搜索和筛选
+        filtered_tasks = self.filter_tasks(tasks)
+        task_count = len(filtered_tasks)
 
         group_widget = getattr(self, f"{task_type}_group")
         group_widget.setTitle(f"{group_widget.title().split('(')[0]}({task_count})")
 
-        for index, task in enumerate(tasks, 1):
+        for index, task in enumerate(filtered_tasks, 1):
             list_widget.add_task_item(
                 self.format_task_text(task),
                 index=index,

@@ -687,8 +687,14 @@ class MainWindow(QMainWindow):
             f"{task['name']}\n" 
             f"重要度: {stars} | 紧急度: {task['urgency']}\n" 
             f"创建时间: {create_time}\n"
-            f"截止日期: {deadline}\n"
         )
+        
+        # 对于已完成任务，添加完成时间
+        if 'done_time' in task and task['done_time']:
+            text += f"完成日期: {task['done_time']}\n"
+        
+        # 添加截止日期
+        text += f"截止日期: {deadline}\n"
         
         # 添加类别信息
         if 'category' in task and task['category']:
@@ -865,6 +871,7 @@ class MainWindow(QMainWindow):
                 is_done=(task_type == "done"),
                 create_time=task.get('create_time', None),
                 deadline=task.get('deadline', None),
+                done_time=task.get('done_time', None),  # 确保传递已完成任务的done_time
                 task_data=task  # 传递完整的任务数据引用
             )
             

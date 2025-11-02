@@ -1,11 +1,12 @@
 import sys
 import time
+import os
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                              QGroupBox, QFormLayout, QLineEdit, QComboBox,
                              QDateTimeEdit, QPushButton, QSplitter, QMessageBox,
                              QSystemTrayIcon, QMenu, QAction, qApp, QDialog,
                              QSpinBox, QLabel, QCheckBox, QSizePolicy, QGridLayout,
-                             QTabWidget)
+                             QTabWidget, QFileDialog, QMenuBar)
 from PyQt5.QtCore import Qt, QDate, QDateTime, QThread, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
 from datetime import datetime, date, timedelta
@@ -174,6 +175,47 @@ class MainWindow(QMainWindow):
 
         # 点击托盘图标显示/隐藏窗口
         self.tray_icon.activated.connect(self.on_tray_activated)
+    
+    def init_menu_bar(self):
+        """初始化菜单栏"""
+        menu_bar = self.menuBar()
+        
+        # 文件菜单
+        file_menu = menu_bar.addMenu("文件")
+        
+        # 导入子菜单
+        import_menu = file_menu.addMenu("导入任务")
+        
+        # 导入JSON
+        import_json_action = QAction("从JSON文件导入", self)
+        import_json_action.triggered.connect(self.handle_import_json)
+        import_menu.addAction(import_json_action)
+        
+        # 导入CSV
+        import_csv_action = QAction("从CSV文件导入", self)
+        import_csv_action.triggered.connect(self.handle_import_csv)
+        import_menu.addAction(import_csv_action)
+        
+        # 导出子菜单
+        export_menu = file_menu.addMenu("导出任务")
+        
+        # 导出JSON
+        export_json_action = QAction("导出为JSON文件", self)
+        export_json_action.triggered.connect(self.handle_export_json)
+        export_menu.addAction(export_json_action)
+        
+        # 导出CSV
+        export_csv_action = QAction("导出为CSV文件", self)
+        export_csv_action.triggered.connect(self.handle_export_csv)
+        export_menu.addAction(export_csv_action)
+        
+        # 设置菜单
+        settings_menu = menu_bar.addMenu("设置")
+        
+        # 打开设置
+        settings_action = QAction("打开设置", self)
+        settings_action.triggered.connect(self.open_settings)
+        settings_menu.addAction(settings_action)
 
     def init_hotkey_listener(self):
         """初始化快捷键监听"""
@@ -185,6 +227,9 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """初始化界面"""
+        # 创建菜单栏
+        self.init_menu_bar()
+        
         # 主部件和布局
         central_widget = QWidget()
         main_layout = QHBoxLayout(central_widget)
@@ -347,12 +392,7 @@ class MainWindow(QMainWindow):
         self.refresh_btn.clicked.connect(self.refresh_all_lists)
         layout.addRow(self.refresh_btn)
 
-        # 设置按钮（增大尺寸）
-        self.settings_btn = QPushButton("设置")
-        self.settings_btn.setMinimumHeight(40)  # 增大按钮高度
-        self.settings_btn.setStyleSheet("font-size: 14px;")
-        self.settings_btn.clicked.connect(self.open_settings)
-        layout.addRow(self.settings_btn)
+
 
         panel.setLayout(layout)
         panel.setMaximumWidth(320)
@@ -715,13 +755,121 @@ class MainWindow(QMainWindow):
         self.refresh_all_lists()
         
     def reset_search_filter(self):
-        """重置所有筛选条件"""
+        """重置搜索和筛选条件"""
         self.search_input.clear()
         self.category_filter.setCurrentIndex(0)
         self.tag_filter.setCurrentIndex(0)
         self.importance_filter.setCurrentIndex(0)
         self.urgency_filter.setCurrentIndex(0)
         self.deadline_filter.setCurrentIndex(0)
+    
+    def handle_import_json(self):
+        """处理从JSON文件导入任务数据"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择JSON文件", "", "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # 先导入任务以获取预览数据
+            imported_tasks = self.task_handler.data_import_export._import_json(file_path)
+            
+            # 显示预览对话框
+            strategy, selected_tasks = self.task_handler.data_import_export.show_import_preview_dialog(self, imported_tasks)
+            
+            if strategy and selected_tasks:
+                # 处理导入的任务
+                success, result = self.task_handler.data_import_export._process_imported_tasks(selected_tasks, strategy)
+                
+                if success:
+                    # 刷新列表
+                    self.refresh_all_lists()
+                    
+                    # 显示导入结果
+                    message = f"导入成功！\n"
+                    message += f"添加任务数: {result['added']}\n"
+                    message += f"更新任务数: {result['updated']}\n"
+                    message += f"跳过任务数: {result['skipped']}\n"
+                    message += f"共处理任务数: {len(selected_tasks)}"
+                    QMessageBox.information(self, "导入成功", message)
+                else:
+                    QMessageBox.warning(self, "导入失败", "导入任务数据失败，请检查文件格式是否正确。")
+        except Exception as e:
+            QMessageBox.warning(self, "导入错误", f"导入过程中发生错误：{str(e)}")
+    
+    def handle_import_csv(self):
+        """处理从CSV文件导入任务数据"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择CSV文件", "", "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # 先导入任务以获取预览数据
+            imported_tasks = self.task_handler.data_import_export._import_csv(file_path)
+            
+            # 显示预览对话框
+            strategy, selected_tasks = self.task_handler.data_import_export.show_import_preview_dialog(self, imported_tasks)
+            
+            if strategy and selected_tasks:
+                # 处理导入的任务
+                success, result = self.task_handler.data_import_export._process_imported_tasks(selected_tasks, strategy)
+                
+                if success:
+                    # 刷新列表
+                    self.refresh_all_lists()
+                    
+                    # 显示导入结果
+                    message = f"导入成功！\n"
+                    message += f"添加任务数: {result['added']}\n"
+                    message += f"更新任务数: {result['updated']}\n"
+                    message += f"跳过任务数: {result['skipped']}\n"
+                    message += f"共处理任务数: {len(selected_tasks)}"
+                    QMessageBox.information(self, "导入成功", message)
+                else:
+                    QMessageBox.warning(self, "导入失败", "导入任务数据失败，请检查文件格式是否正确。")
+        except Exception as e:
+            QMessageBox.warning(self, "导入错误", f"导入过程中发生错误：{str(e)}")
+    
+    def handle_export_json(self):
+        """处理导出任务数据为JSON文件"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "保存JSON文件", "", "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        # 如果没有文件扩展名，添加.json
+        if not file_path.endswith('.json'):
+            file_path += '.json'
+        
+        success = self.task_handler.data_import_export.export_tasks("json", file_path)
+        
+        if success:
+            QMessageBox.information(self, "导出成功", f"任务数据已成功导出到：\n{file_path}")
+    
+    def handle_export_csv(self):
+        """处理导出任务数据为CSV文件"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "保存CSV文件", "", "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        # 如果没有文件扩展名，添加.csv
+        if not file_path.endswith('.csv'):
+            file_path += '.csv'
+        
+        success = self.task_handler.data_import_export.export_tasks("csv", file_path)
+        
+        if success:
+            QMessageBox.information(self, "导出成功", f"任务数据已成功导出到：\n{file_path}")
         
     def filter_tasks(self, tasks):
         """根据搜索和筛选条件过滤任务列表"""

@@ -1,5 +1,6 @@
 from datetime import datetime, date, timedelta
 import time
+from .data_import_export import DataImportExport
 
 
 class TaskHandler:
@@ -10,6 +11,7 @@ class TaskHandler:
         self.tasks = self.data_manager.load_tasks()
         self.check_overdue_tasks()  # 初始化时检查超时任务
         self.auto_promote_urgency()  # 初始化时自动提升紧急度
+        self.data_import_export = DataImportExport(self)
     
     def calculate_time_remaining(self, task):
         """

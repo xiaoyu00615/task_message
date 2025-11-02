@@ -102,7 +102,7 @@ class SettingsDialog(QDialog):
         
         # 创建导航列表
         self.nav_list = QListWidget()
-        self.nav_list.addItems(["基本设置", "备份与恢复", "外观设置", "通知设置", "数据更新设置"])
+        self.nav_list.addItems(["基本设置", "备份与恢复", "外观设置", "通知设置", "数据更新设置", "快捷键设置"])
         self.nav_list.setCurrentRow(0)
         # 移除不需要的itemClicked连接，使用currentRowChanged即可
         nav_layout.addWidget(self.nav_list)
@@ -147,6 +147,7 @@ class SettingsDialog(QDialog):
         self.init_interface_settings_page()
         self.init_notification_settings_page()
         self.init_update_settings_page()
+        self.init_hotkey_settings_page()
         
         # 添加到主布局
         main_layout.addWidget(nav_widget)
@@ -793,6 +794,107 @@ class SettingsDialog(QDialog):
         else:
             QMessageBox.information(self, "测试通知", "这是一条测试通知，确认通知功能正常工作。")
     
+    def init_hotkey_settings_page(self):
+        """初始化快捷键设置页面"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # 页面标题 - 更大更醒目
+        title_label = QLabel("快捷键设置")
+        title_label.setStyleSheet("""
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #333;
+            margin-bottom: 20px;
+        """)
+        layout.addWidget(title_label)
+        
+        # 快捷键设置卡片
+        hotkey_card = QWidget()
+        hotkey_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        hotkey_layout = QVBoxLayout(hotkey_card)
+        hotkey_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 切换显示状态快捷键设置
+        toggle_layout = QHBoxLayout()
+        toggle_label = QLabel("切换显示状态:")
+        toggle_label.setMinimumWidth(150)
+        toggle_layout.addWidget(toggle_label)
+        
+        # 快捷键显示标签
+        self.toggle_display_hotkey_label = QLabel("Ctrl + Alt + T")
+        self.toggle_display_hotkey_label.setStyleSheet("""
+            QLabel {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 8px 12px;
+                font-family: Consolas, Monaco, monospace;
+                color: #0078d7;
+            }
+        """)
+        toggle_layout.addWidget(self.toggle_display_hotkey_label)
+        
+        # 强制关闭程序快捷键设置
+        force_close_layout = QHBoxLayout()
+        force_close_label = QLabel("强制关闭程序:")
+        force_close_label.setMinimumWidth(150)
+        force_close_layout.addWidget(force_close_label)
+        
+        # 快捷键显示标签
+        self.force_close_hotkey_label = QLabel("Alt + Q")
+        self.force_close_hotkey_label.setStyleSheet("""
+            QLabel {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 8px 12px;
+                font-family: Consolas, Monaco, monospace;
+                color: #0078d7;
+            }
+        """)
+        force_close_layout.addWidget(self.force_close_hotkey_label)
+        
+        # 添加提示文本
+        hotkey_note = QLabel("使用Alt+Q快捷键可以强制退出程序。")
+        hotkey_note.setWordWrap(True)
+        hotkey_note.setStyleSheet("color: #666; font-size: 13px; margin-top: 10px;")
+        
+        hotkey_layout.addLayout(toggle_layout)
+        
+        # 添加切换显示状态提示文本
+        toggle_note = QLabel("使用Ctrl+Alt+T快捷键可以快速切换窗口的显示和隐藏状态。")
+        toggle_note.setWordWrap(True)
+        toggle_note.setStyleSheet("color: #666; font-size: 13px; margin-top: 10px;")
+        hotkey_layout.addWidget(toggle_note)
+        
+        hotkey_layout.addLayout(force_close_layout)
+        hotkey_layout.addWidget(hotkey_note)
+        
+        # 添加额外的快捷键说明
+        additional_note = QLabel("程序将自动处理这些快捷键以确保功能正常工作。")
+        additional_note.setWordWrap(True)
+        additional_note.setStyleSheet("color: #666; font-size: 13px; margin-top: 10px;")
+        hotkey_layout.addWidget(additional_note)
+        
+        layout.addWidget(hotkey_card)
+        
+        # 添加更多快捷键预留位置（可扩展）
+        future_note = QLabel("更多快捷键设置将在未来版本中提供。")
+        future_note.setStyleSheet("color: #888; font-style: italic; margin-top: 20px;")
+        layout.addWidget(future_note)
+        
+        layout.addStretch()
+        self.content_stack.addWidget(page)
+    
     def init_update_settings_page(self):
         """初始化数据更新设置页面"""
         page = QWidget()
@@ -1123,6 +1225,12 @@ class SettingsDialog(QDialog):
         
         # 保存主题设置
         self.config["theme"] = self.theme_combo.currentIndex()
+        
+        # 保存快捷键设置
+        self.config["hotkeys"] = {
+            "toggle_display": "Ctrl+Alt+T",
+            "force_close": "Alt+Q"
+        }
         
         # 调用父类的accept方法
         super().accept()
@@ -2558,6 +2666,29 @@ class MainWindow(QMainWindow):
         self.tray_icon.hide()  # 隐藏托盘图标
         qApp.quit()  # 退出应用
 
+    def keyPressEvent(self, event):
+        """键盘按下事件处理，捕获快捷键"""
+        # 处理Ctrl+Alt+T快捷键用于切换窗口显示状态
+        if event.key() == Qt.Key_T and event.modifiers() == (Qt.ControlModifier | Qt.AltModifier):
+            if self.isHidden() or not self.isVisible():
+                self.show_window()
+            else:
+                self.hide_window()
+        # 处理Alt+Q快捷键用于强制关闭程序
+        elif event.key() == Qt.Key_Q and event.modifiers() == Qt.AltModifier:
+            # 确认是否要退出程序
+            reply = QMessageBox.question(
+                self,
+                "确认退出",
+                "确定要强制退出程序吗？所有未保存的更改将会丢失。",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self.exit_app()
+        else:
+            super().keyPressEvent(event)
+    
     def closeEvent(self, event):
         """窗口关闭事件（改为隐藏到托盘）"""
         event.ignore()  # 忽略关闭事件

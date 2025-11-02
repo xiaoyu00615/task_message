@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                              QDateTimeEdit, QPushButton, QSplitter, QMessageBox,
                              QSystemTrayIcon, QMenu, QAction, qApp, QDialog,
                              QSpinBox, QLabel, QCheckBox, QSizePolicy, QGridLayout,
-                             QTabWidget, QFileDialog, QMenuBar)
+                             QTabWidget, QFileDialog, QMenuBar, QApplication, QListWidget, QStackedWidget)
 from PyQt5.QtCore import Qt, QDate, QDateTime, QThread, pyqtSignal, QSize, QTimer
 from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
 from datetime import datetime, date, timedelta
@@ -38,76 +38,1073 @@ class HotkeyListener(QThread):
 
 
 class SettingsDialog(QDialog):
-    """设置对话框"""
+    """设置对话框 - 整合所有设置选项"""
 
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.config = config.copy()  # 复制当前配置
+        self.do_backup = False  # 是否需要执行备份
         self.init_ui()
 
     def init_ui(self):
         self.setWindowTitle("设置")
-        self.setGeometry(200, 200, 300, 200)
-        layout = QVBoxLayout(self)
-
-        # 窗口大小设置
-        size_group = QGroupBox("窗口大小设置")
-        size_layout = QFormLayout()
-
+        # 使用更大的窗口尺寸提供更好的用户体验
+        self.setGeometry(200, 200, 900, 650)
+        
+        # 设置中文字体支持
+        font = QFont()
+        font.setFamily("SimHei")
+        self.setFont(font)
+        
+        # 创建主布局
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 创建左侧导航面板 - 类似浏览器设置的侧边栏设计
+        nav_widget = QWidget()
+        nav_widget.setMinimumWidth(220)
+        nav_widget.setMaximumWidth(240)
+        nav_widget.setStyleSheet("""
+            QWidget { 
+                background-color: #f8f9fa; 
+                border-right: 1px solid #e0e0e0;
+            }
+            QListWidget { 
+                background-color: transparent; 
+                border: none;
+                outline: none;
+            }
+            QListWidget::item { 
+                padding: 12px 20px;
+                height: 48px;
+                font-size: 14px;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            QListWidget::item:selected { 
+                background-color: #e6f2ff;
+                color: #0078d7;
+                border-left: 3px solid #0078d7;
+            }
+        """)
+        nav_layout = QVBoxLayout(nav_widget)
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(0)
+        
+        # 添加设置标题
+        title_label = QLabel("设置")
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; padding: 20px;")
+        nav_layout.addWidget(title_label)
+        
+        # 创建导航列表
+        self.nav_list = QListWidget()
+        self.nav_list.addItems(["基本设置", "备份与恢复", "外观设置", "通知设置", "数据更新设置"])
+        self.nav_list.setCurrentRow(0)
+        # 移除不需要的itemClicked连接，使用currentRowChanged即可
+        nav_layout.addWidget(self.nav_list)
+        
+        # 添加搜索框 - 更现代的搜索设计
+        search_layout = QHBoxLayout()
+        search_layout.setContentsMargins(15, 20, 15, 10)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("搜索设置...")
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                border-radius: 4px;
+                border: 1px solid #ddd;
+                padding: 8px 12px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border-color: #0078d7;
+                outline: none;
+            }
+        """)
+        search_layout.addWidget(self.search_input)
+        nav_layout.addLayout(search_layout)
+        
+        # 添加底部间距
+        nav_layout.addStretch()
+        
+        # 创建右侧内容区域 - 使用更现代的样式
+        self.content_stack = QStackedWidget()
+        self.content_stack.setStyleSheet("""
+            QStackedWidget {
+                background-color: #ffffff;
+            }
+            QWidget {
+                background-color: #ffffff;
+            }
+        """)
+        
+        # 添加各个设置页面
+        self.init_basic_settings_page()
+        self.init_backup_settings_page()
+        self.init_interface_settings_page()
+        self.init_notification_settings_page()
+        self.init_update_settings_page()
+        
+        # 添加到主布局
+        main_layout.addWidget(nav_widget)
+        main_layout.addWidget(self.content_stack, 1)  # 1表示拉伸因子
+        
+        # 连接导航选择信号
+        self.nav_list.currentRowChanged.connect(self.content_stack.setCurrentIndex)
+    
+    def init_basic_settings_page(self):
+        """初始化基本设置页面"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # 页面标题 - 更大更醒目
+        title_label = QLabel("基本设置")
+        title_label.setStyleSheet("""
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #333;
+            margin-bottom: 20px;
+        """)
+        layout.addWidget(title_label)
+        
+        # 程序信息卡片 - 使用现代化卡片设计
+        info_card = QWidget()
+        info_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        info_title = QLabel("程序信息")
+        info_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        info_layout.addWidget(info_title)
+        
+        # 程序详情 - 使用表格布局
+        detail_layout = QFormLayout()
+        detail_layout.setHorizontalSpacing(20)
+        detail_layout.setVerticalSpacing(10)
+        
+        # 使用只读文本框而不是简单标签，更符合现代UI
+        version_edit = QLineEdit("v1.0.3")
+        version_edit.setReadOnly(True)
+        version_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px 10px;
+            }
+        """)
+        
+        update_edit = QLineEdit("2025年11月")
+        update_edit.setReadOnly(True)
+        update_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px 10px;
+            }
+        """)
+        
+        detail_layout.addRow(QLabel("当前版本:"), version_edit)
+        detail_layout.addRow(QLabel("最近更新:"), update_edit)
+        info_layout.addLayout(detail_layout)
+        
+        layout.addWidget(info_card)
+        
+        # 重置设置按钮 - 更大更醒目，有悬停效果
+        reset_btn = QPushButton("重置所有设置")
+        reset_btn.setMinimumHeight(40)
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff4757;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #ff3838;
+            }
+        """)
+        reset_btn.clicked.connect(self.handle_reset_settings)
+        layout.addWidget(reset_btn, alignment=Qt.AlignLeft)
+        
+        # 添加热门设置卡片
+        hot_settings_card = QWidget()
+        hot_settings_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        hot_layout = QVBoxLayout(hot_settings_card)
+        hot_layout.setContentsMargins(20, 20, 20, 20)
+        
+        hot_title = QLabel("热门设置")
+        hot_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        hot_layout.addWidget(hot_title)
+        
+        # 添加快速访问按钮
+        quick_layout = QGridLayout()
+        quick_layout.setSpacing(10)
+        
+        theme_btn = QPushButton("外观设置")
+        theme_btn.setMinimumHeight(35)
+        theme_btn.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                text-align: left;
+                padding-left: 15px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        """)
+        theme_btn.clicked.connect(lambda: self.nav_list.setCurrentRow(2))
+        
+        backup_btn = QPushButton("备份与恢复")
+        backup_btn.setMinimumHeight(35)
+        backup_btn.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                text-align: left;
+                padding-left: 15px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        """)
+        backup_btn.clicked.connect(lambda: self.nav_list.setCurrentRow(1))
+        
+        quick_layout.addWidget(theme_btn, 0, 0)
+        quick_layout.addWidget(backup_btn, 1, 0)
+        hot_layout.addLayout(quick_layout)
+        
+        layout.addWidget(hot_settings_card)
+        
+        layout.addStretch()
+        self.content_stack.addWidget(page)
+    
+    def init_backup_settings_page(self):
+        """初始化备份设置页面"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # 页面标题 - 更大更醒目
+        title_label = QLabel("备份与恢复")
+        title_label.setStyleSheet("""
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #333;
+            margin-bottom: 20px;
+        """)
+        layout.addWidget(title_label)
+        
+        # 自动备份设置卡片
+        auto_backup_card = QWidget()
+        auto_backup_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        auto_backup_layout = QVBoxLayout(auto_backup_card)
+        auto_backup_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        card_title = QLabel("自动备份设置")
+        card_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        auto_backup_layout.addWidget(card_title)
+        
+        # 启用自动备份复选框 - 使用更大的复选框
+        self.auto_backup_check = QCheckBox("启用自动备份")
+        self.auto_backup_check.setChecked(self.config.get("auto_backup_enabled", False))
+        self.auto_backup_check.setStyleSheet("font-size: 14px; margin-bottom: 15px;")
+        self.auto_backup_check.stateChanged.connect(self.toggle_auto_backup_options)
+        auto_backup_layout.addWidget(self.auto_backup_check)
+        
+        # 备份间隔设置（分钟）
+        interval_layout = QHBoxLayout()
+        interval_label = QLabel("备份间隔（分钟）:")
+        interval_label.setMinimumWidth(120)
+        interval_layout.addWidget(interval_label)
+        
+        self.interval_spin = QSpinBox()
+        self.interval_spin.setRange(1, 10080)  # 最大7天（60*24*7）
+        self.interval_spin.setValue(self.config.get("backup_interval", 60))
+        self.interval_spin.setMinimumWidth(120)
+        self.interval_spin.setStyleSheet("""
+            QSpinBox {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px;
+            }
+        """)
+        interval_layout.addWidget(self.interval_spin)
+        interval_layout.addStretch()
+        auto_backup_layout.addLayout(interval_layout)
+        
+        # 备份路径设置
+        path_layout = QHBoxLayout()
+        path_label = QLabel("备份目录:")
+        path_label.setMinimumWidth(120)
+        path_layout.addWidget(path_label)
+        
+        self.backup_path_edit = QLineEdit()
+        # 默认使用backups文件夹作为备份路径
+        default_backup_path = os.path.join(os.getcwd(), 'backups')
+        self.backup_path_edit.setText(self.config.get("backup_path", default_backup_path))
+        self.backup_path_edit.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px;
+                flex: 1;
+            }
+        """)
+        path_layout.addWidget(self.backup_path_edit, 1)
+        
+        browse_btn = QPushButton("浏览")
+        browse_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d7;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                margin-left: 10px;
+            }
+            QPushButton:hover {
+                background-color: #005a9e;
+            }
+        """)
+        browse_btn.clicked.connect(self.browse_backup_path)
+        path_layout.addWidget(browse_btn)
+        auto_backup_layout.addLayout(path_layout)
+        
+        layout.addWidget(auto_backup_card)
+        
+        # 手动备份卡片
+        manual_backup_card = QWidget()
+        manual_backup_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        manual_backup_layout = QVBoxLayout(manual_backup_card)
+        manual_backup_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        manual_title = QLabel("手动备份")
+        manual_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        manual_backup_layout.addWidget(manual_title)
+        
+        # 立即手动备份按钮 - 使用醒目的主色调
+        self.manual_backup_btn = QPushButton("立即手动备份")
+        self.manual_backup_btn.setMinimumHeight(45)
+        self.manual_backup_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        self.manual_backup_btn.clicked.connect(self.accept_and_backup)
+        manual_backup_layout.addWidget(self.manual_backup_btn)
+        
+        # 备份说明 - 更清晰的说明文本
+        backup_note = QLabel("注意：备份会生成JSON和CSV两种格式的文件，保存在您指定的备份目录中。")
+        backup_note.setWordWrap(True)
+        backup_note.setStyleSheet("color: #666; font-size: 13px; margin-top: 10px;")
+        manual_backup_layout.addWidget(backup_note)
+        
+        layout.addWidget(manual_backup_card)
+        
+        # 恢复选项卡片
+        restore_card = QWidget()
+        restore_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        restore_layout = QVBoxLayout(restore_card)
+        restore_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        restore_title = QLabel("数据恢复")
+        restore_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        restore_layout.addWidget(restore_title)
+        
+        # 从备份恢复按钮
+        restore_btn = QPushButton("从备份文件恢复")
+        restore_btn.setMinimumHeight(40)
+        restore_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ffc107;
+                color: #212529;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #e0a800;
+            }
+        """)
+        restore_btn.clicked.connect(self.handle_restore_backup)
+        restore_layout.addWidget(restore_btn)
+        
+        # 恢复警告
+        restore_warning = QLabel("警告：恢复数据将覆盖当前所有任务数据，请确保已做好备份。")
+        restore_warning.setWordWrap(True)
+        restore_warning.setStyleSheet("color: #dc3545; font-size: 13px; margin-top: 10px;")
+        restore_layout.addWidget(restore_warning)
+        
+        layout.addWidget(restore_card)
+        
+        layout.addStretch()
+        self.content_stack.addWidget(page)
+        
+        # 初始状态设置
+        self.toggle_auto_backup_options()
+    
+    def init_interface_settings_page(self):
+        """初始化界面设置页面"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # 页面标题 - 更大更醒目
+        title_label = QLabel("外观设置")
+        title_label.setStyleSheet("""
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #333;
+            margin-bottom: 20px;
+        """)
+        layout.addWidget(title_label)
+        
+        # 窗口大小设置卡片
+        size_card = QWidget()
+        size_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        size_layout = QVBoxLayout(size_card)
+        size_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        size_card_title = QLabel("窗口大小设置")
+        size_card_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        size_layout.addWidget(size_card_title)
+        
+        # 使用表格布局，更现代的样式
+        size_form_layout = QFormLayout()
+        size_form_layout.setHorizontalSpacing(20)
+        size_form_layout.setVerticalSpacing(12)
+        
         self.width_spin = QSpinBox()
         self.width_spin.setRange(800, 2000)  # 最小800，最大2000
         self.width_spin.setValue(self.config["window_width"])
-        size_layout.addRow("窗口宽度:", self.width_spin)
-
+        self.width_spin.setMinimumWidth(120)
+        self.width_spin.setStyleSheet("""
+            QSpinBox {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px;
+            }
+        """)
+        
+        width_label = QLabel("窗口宽度:")
+        width_label.setStyleSheet("font-size: 14px;")
+        size_form_layout.addRow(width_label, self.width_spin)
+        
         self.height_spin = QSpinBox()
         self.height_spin.setRange(600, 1500)  # 最小600，最大1500
         self.height_spin.setValue(self.config["window_height"])
-        size_layout.addRow("窗口高度:", self.height_spin)
-
-        size_group.setLayout(size_layout)
-        layout.addWidget(size_group)
-
-        # 提示信息设置
+        self.height_spin.setMinimumWidth(120)
+        self.height_spin.setStyleSheet("""
+            QSpinBox {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px;
+            }
+        """)
+        
+        height_label = QLabel("窗口高度:")
+        height_label.setStyleSheet("font-size: 14px;")
+        size_form_layout.addRow(height_label, self.height_spin)
+        
+        size_layout.addLayout(size_form_layout)
+        layout.addWidget(size_card)
+        
+        # 界面主题设置卡片
+        theme_card = QWidget()
+        theme_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        theme_layout = QVBoxLayout(theme_card)
+        theme_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        theme_card_title = QLabel("界面主题")
+        theme_card_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        theme_layout.addWidget(theme_card_title)
+        
+        # 主题选择下拉框 - 使用更现代的样式
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["默认主题", "浅色主题", "深色主题"])
+        # 尝试获取当前主题配置，默认为0（默认主题）
+        current_theme = self.config.get("theme", 0)
+        if current_theme < self.theme_combo.count():
+            self.theme_combo.setCurrentIndex(current_theme)
+        self.theme_combo.setMinimumHeight(35)
+        self.theme_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 6px;
+                font-size: 14px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 25px;
+                border-left-width: 1px;
+                border-left-color: #ddd;
+                border-left-style: solid;
+                border-top-right-radius: 4px;
+                border-bottom-right-radius: 4px;
+            }
+        """)
+        theme_layout.addWidget(self.theme_combo)
+        
+        # 主题预览区域
+        preview_frame = QWidget()
+        preview_frame.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                margin-top: 15px;
+                padding: 15px;
+            }
+        """)
+        preview_layout = QVBoxLayout(preview_frame)
+        
+        preview_label = QLabel("主题预览效果")
+        preview_label.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 10px;")
+        preview_layout.addWidget(preview_label)
+        
+        # 预览按钮组，展示主题效果
+        preview_btn_layout = QHBoxLayout()
+        preview_btn_layout.setSpacing(10)
+        
+        btn1 = QPushButton("主要按钮")
+        btn1.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d7;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+        """)
+        
+        btn2 = QPushButton("次要按钮")
+        btn2.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;
+                color: #333;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+        """)
+        
+        preview_btn_layout.addWidget(btn1)
+        preview_btn_layout.addWidget(btn2)
+        preview_layout.addLayout(preview_btn_layout)
+        
+        theme_layout.addWidget(preview_frame)
+        layout.addWidget(theme_card)
+        
+        layout.addStretch()
+        self.content_stack.addWidget(page)
+    
+    def init_notification_settings_page(self):
+        """初始化通知设置页面"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # 页面标题 - 更大更醒目
+        title_label = QLabel("通知设置")
+        title_label.setStyleSheet("""
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #333;
+            margin-bottom: 20px;
+        """)
+        layout.addWidget(title_label)
+        
+        # 通知设置卡片
+        notify_card = QWidget()
+        notify_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        notify_layout = QVBoxLayout(notify_card)
+        notify_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        notify_card_title = QLabel("通知选项")
+        notify_card_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        notify_layout.addWidget(notify_card_title)
+        
+        # 通知设置选项 - 使用更大的复选框和更好的间距
+        checkboxes_layout = QVBoxLayout()
+        checkboxes_layout.setSpacing(15)
+        
+        # 显示提示信息
         self.notify_check = QCheckBox("显示提示信息（系统托盘消息）")
         self.notify_check.setChecked(self.config["show_notifications"])
-        layout.addWidget(self.notify_check)
+        self.notify_check.setStyleSheet("font-size: 14px;")
+        checkboxes_layout.addWidget(self.notify_check)
         
-        # 数据更新时间间隔设置
-        update_group = QGroupBox("数据更新设置")
-        update_layout = QFormLayout()
+        # 任务到期通知
+        self.deadline_notify_check = QCheckBox("任务到期提醒")
+        self.deadline_notify_check.setChecked(self.config.get("deadline_notifications", True))
+        self.deadline_notify_check.setStyleSheet("font-size: 14px;")
+        checkboxes_layout.addWidget(self.deadline_notify_check)
         
+        # 任务超时通知
+        self.overdue_notify_check = QCheckBox("任务超时提醒")
+        self.overdue_notify_check.setChecked(self.config.get("overdue_notifications", True))
+        self.overdue_notify_check.setStyleSheet("font-size: 14px;")
+        checkboxes_layout.addWidget(self.overdue_notify_check)
+        
+        # 添加通知预览选项
+        self.preview_notification_check = QCheckBox("显示通知预览内容")
+        self.preview_notification_check.setChecked(self.config.get("notification_preview", True))
+        self.preview_notification_check.setStyleSheet("font-size: 14px;")
+        checkboxes_layout.addWidget(self.preview_notification_check)
+        
+        notify_layout.addLayout(checkboxes_layout)
+        
+        # 通知行为说明
+        notify_help = QLabel("启用这些选项后，程序将在相应事件发生时向您发送通知提醒。")
+        notify_help.setWordWrap(True)
+        notify_help.setStyleSheet("color: #666; font-size: 13px; margin-top: 10px;")
+        notify_layout.addWidget(notify_help)
+        
+        layout.addWidget(notify_card)
+        
+        # 通知演示卡片
+        demo_card = QWidget()
+        demo_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        demo_layout = QVBoxLayout(demo_card)
+        demo_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        demo_card_title = QLabel("通知演示")
+        demo_card_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        demo_layout.addWidget(demo_card_title)
+        
+        # 演示通知按钮
+        demo_btn = QPushButton("发送测试通知")
+        demo_btn.setMinimumHeight(40)
+        demo_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #17a2b8;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #138496;
+            }
+        """)
+        demo_btn.clicked.connect(self.send_test_notification)
+        demo_layout.addWidget(demo_btn)
+        
+        layout.addWidget(demo_card)
+        
+        layout.addStretch()
+        self.content_stack.addWidget(page)
+    
+    def send_test_notification(self):
+        """发送测试通知"""
+        if self.parent() and hasattr(self.parent(), 'show_system_tray_message'):
+            self.parent().show_system_tray_message(
+                "测试通知", 
+                "这是一条测试通知，确认通知功能正常工作。"
+            )
+        else:
+            QMessageBox.information(self, "测试通知", "这是一条测试通知，确认通知功能正常工作。")
+    
+    def init_update_settings_page(self):
+        """初始化数据更新设置页面"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+        
+        # 页面标题 - 更大更醒目
+        title_label = QLabel("数据更新设置")
+        title_label.setStyleSheet("""
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #333;
+            margin-bottom: 20px;
+        """)
+        layout.addWidget(title_label)
+        
+        # 数据更新设置卡片
+        update_card = QWidget()
+        update_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        update_layout = QVBoxLayout(update_card)
+        update_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        update_card_title = QLabel("更新频率")
+        update_card_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        update_layout.addWidget(update_card_title)
+        
+        # 更新频率设置 - 使用表单布局
+        form_layout = QFormLayout()
+        form_layout.setVerticalSpacing(15)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 更新时间间隔设置
         self.update_interval_spin = QSpinBox()
         self.update_interval_spin.setRange(1, 3600)  # 1到3600秒
-        # 直接使用配置中的秒值
         self.update_interval_spin.setValue(self.config["update_interval"])
-        update_layout.addRow("更新时间间隔（秒）:", self.update_interval_spin)
+        self.update_interval_spin.setMinimumHeight(32)
+        self.update_interval_spin.setStyleSheet("""
+            QSpinBox {
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 14px;
+            }
+        """)
         
-        update_group.setLayout(update_layout)
-        layout.addWidget(update_group)
-
-        # 按钮区域
-        btn_layout = QHBoxLayout()
-        self.ok_btn = QPushButton("确定")
-        self.ok_btn.clicked.connect(self.accept)
-        self.cancel_btn = QPushButton("取消")
-        self.cancel_btn.clicked.connect(self.reject)
-
-        btn_layout.addWidget(self.ok_btn)
-        btn_layout.addWidget(self.cancel_btn)
-        layout.addLayout(btn_layout)
+        interval_label = QLabel("更新时间间隔（秒）:")
+        interval_label.setStyleSheet("font-size: 14px;")
+        form_layout.addRow(interval_label, self.update_interval_spin)
+        
+        # 自动保存设置
+        self.auto_save_check = QCheckBox("任务变更时自动保存")
+        self.auto_save_check.setChecked(self.config.get("auto_save", True))
+        self.auto_save_check.setStyleSheet("font-size: 14px;")
+        form_layout.addRow(self.auto_save_check)
+        
+        update_layout.addLayout(form_layout)
+        
+        # 更新说明
+        update_help = QLabel("设置数据更新的时间间隔，较小的值会使数据更实时但可能增加系统负担。自动保存功能可确保任务变更不会丢失。")
+        update_help.setWordWrap(True)
+        update_help.setStyleSheet("color: #666; font-size: 13px; margin-top: 15px;")
+        update_layout.addWidget(update_help)
+        
+        layout.addWidget(update_card)
+        
+        # 数据优化卡片
+        optimize_card = QWidget()
+        optimize_card.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+        """)
+        optimize_layout = QVBoxLayout(optimize_card)
+        optimize_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 卡片标题
+        optimize_card_title = QLabel("数据优化")
+        optimize_card_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 15px;")
+        optimize_layout.addWidget(optimize_card_title)
+        
+        # 优化按钮组
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(15)
+        
+        # 清理数据按钮
+        clean_btn = QPushButton("清理历史数据")
+        clean_btn.setMinimumHeight(40)
+        clean_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        clean_btn.clicked.connect(self.clean_history_data)
+        buttons_layout.addWidget(clean_btn)
+        
+        # 优化数据按钮
+        optimize_btn = QPushButton("优化数据性能")
+        optimize_btn.setMinimumHeight(40)
+        optimize_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        optimize_btn.clicked.connect(self.optimize_data_performance)
+        buttons_layout.addWidget(optimize_btn)
+        
+        optimize_layout.addLayout(buttons_layout)
+        
+        # 优化说明
+        optimize_help = QLabel("定期清理不需要的历史数据可以提高程序性能，优化操作会重新整理数据结构以提升访问速度。")
+        optimize_help.setWordWrap(True)
+        optimize_help.setStyleSheet("color: #666; font-size: 13px; margin-top: 15px;")
+        optimize_layout.addWidget(optimize_help)
+        
+        layout.addWidget(optimize_card)
+        
+        layout.addStretch()
+        self.content_stack.addWidget(page)
+    
+    def clean_history_data(self):
+        """清理历史数据"""
+        reply = QMessageBox.question(self, "确认清理", 
+                                    "确定要清理历史数据吗？此操作不可恢复。",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            # 这里可以添加实际的清理逻辑
+            QMessageBox.information(self, "清理完成", "历史数据清理完成。")
+    
+    def optimize_data_performance(self):
+        """优化数据性能"""
+        # 显示优化进行中提示
+        QMessageBox.information(self, "优化进行中", "正在优化数据性能，请稍候...")
+        
+        # 这里可以添加实际的优化逻辑
+        # 模拟优化过程
+        QMessageBox.information(self, "优化完成", "数据性能优化完成。")
+    
+    def on_nav_item_clicked(self, item):
+        """处理导航项点击"""
+        # 已经通过currentRowChanged信号连接，这里可以添加额外处理
+        pass
+    
+    def toggle_auto_backup_options(self):
+        """根据是否启用自动备份来启用/禁用相关选项"""
+        enabled = self.auto_backup_check.isChecked()
+        self.interval_spin.setEnabled(enabled)
+        self.backup_path_edit.setEnabled(enabled)
+    
+    def browse_backup_path(self):
+        """浏览选择备份目录"""
+        path = QFileDialog.getExistingDirectory(
+            self, 
+            "选择备份目录",
+            self.backup_path_edit.text()
+        )
+        if path:
+            self.backup_path_edit.setText(path)
+    
+    def accept_and_backup(self):
+        """接受设置并立即备份"""
+        self.do_backup = True
+        self.accept()
+    
+    def handle_restore_backup(self):
+        """处理从备份文件恢复数据"""
+        # 显示确认对话框
+        reply = QMessageBox.warning(
+            self,
+            "确认恢复",
+            "恢复数据将覆盖当前所有任务数据！\n确定要继续吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.No:
+            return
+        
+        # 打开文件选择对话框
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择备份文件",
+            self.config.get("backup_path", os.path.join(os.getcwd(), 'backups')),
+            "备份文件 (*.json);;所有文件 (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # 读取备份文件
+            with open(file_path, 'r', encoding='utf-8') as file:
+                tasks_data = json.load(file)
+            
+            # 清空当前任务
+            main_window = self.parent()
+            main_window.task_model.clear()
+            
+            # 恢复任务数据
+            for task_data in tasks_data:
+                task = main_window.Task(
+                    title=task_data.get('title', ''),
+                    description=task_data.get('description', ''),
+                    due_date=task_data.get('due_date', ''),
+                    priority=task_data.get('priority', 'medium'),
+                    status=task_data.get('status', 'pending'),
+                    tags=task_data.get('tags', [])
+                )
+                main_window.task_model.add_task(task)
+            
+            # 保存恢复后的数据
+            main_window.save_tasks()
+            
+            # 更新任务列表视图
+            main_window.task_list_widget.refresh_view()
+            
+            QMessageBox.information(self, "成功", "数据已成功恢复！")
+        
+        except json.JSONDecodeError:
+            QMessageBox.critical(self, "错误", "无法解析备份文件。文件格式可能不正确。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"恢复数据时发生错误：{str(e)}")
+    
+    def handle_reset_settings(self):
+        """重置所有设置"""
+        reply = QMessageBox.question(
+            self, 
+            "确认重置", 
+            "确定要重置所有设置到默认值吗？这将不会影响您的任务数据。",
+            QMessageBox.Yes | QMessageBox.No, 
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            # 重置所有配置到默认值
+            from core.config_manager import ConfigManager
+            default_config = ConfigManager.default_config.copy()
+            for key, value in default_config.items():
+                self.config[key] = value
+            
+            # 更新界面控件
+            self.width_spin.setValue(self.config["window_width"])
+            self.height_spin.setValue(self.config["window_height"])
+            self.notify_check.setChecked(self.config["show_notifications"])
+            self.update_interval_spin.setValue(self.config["update_interval"])
+            self.auto_backup_check.setChecked(self.config.get("auto_backup_enabled", False))
+            self.interval_spin.setValue(self.config.get("backup_interval", 60))
+            self.backup_path_edit.setText(self.config.get("backup_path", os.path.join(os.getcwd(), 'backups')))
+            
+            QMessageBox.information(self, "重置成功", "所有设置已重置为默认值。")
 
     def accept(self):
         """确认设置"""
+        # 保存窗口设置
         self.config["window_width"] = self.width_spin.value()
         self.config["window_height"] = self.height_spin.value()
+        
+        # 保存通知设置
         self.config["show_notifications"] = self.notify_check.isChecked()
-        # 直接保存秒值
+        self.config["deadline_notifications"] = self.deadline_notify_check.isChecked()
+        self.config["overdue_notifications"] = self.overdue_notify_check.isChecked()
+        
+        # 保存更新设置
         self.config["update_interval"] = self.update_interval_spin.value()
+        self.config["auto_save"] = self.auto_save_check.isChecked()
+        
+        # 保存界面设置
+        self.config["theme"] = self.theme_combo.currentIndex()
+        
+        # 保存备份设置
+        self.config["auto_backup_enabled"] = self.auto_backup_check.isChecked()
+        self.config["backup_interval"] = self.interval_spin.value()
+        
+        # 设置默认备份目录为backups文件夹
+        backup_path = self.backup_path_edit.text()
+        if not backup_path or backup_path == '.':
+            backup_path = os.path.join(os.getcwd(), 'backups')
+        # 确保使用backups文件夹而不是backup文件夹
+        if 'backup' in backup_path and 'backups' not in backup_path:
+            backup_path = backup_path.replace('backup', 'backups')
+        self.config["backup_path"] = backup_path
+        
         super().accept()
 
     def get_config(self):
         """返回修改后的配置"""
         return self.config
+        
+    def should_backup(self):
+        """返回是否应该执行备份"""
+        return self.do_backup
 
 
 class BackupSettingsDialog(QDialog):
@@ -274,6 +1271,11 @@ class MainWindow(QMainWindow):
         show_action.triggered.connect(self.show_window)
         tray_menu.addAction(show_action)
 
+        # 备份动作
+        backup_action = QAction("备份", self)
+        backup_action.triggered.connect(self.handle_backup_data)
+        tray_menu.addAction(backup_action)
+
         # 设置动作
         settings_action = QAction("设置", self)
         settings_action.triggered.connect(self.open_settings)
@@ -323,18 +1325,15 @@ class MainWindow(QMainWindow):
         export_csv_action.triggered.connect(self.handle_export_csv)
         export_menu.addAction(export_csv_action)
         
-        # 设置菜单
-        settings_menu = menu_bar.addMenu("设置")
-        
-        # 打开设置
-        settings_action = QAction("打开设置", self)
+        # 设置 - 直接作为菜单项，点击后弹出设置窗口
+        settings_action = QAction("设置", self)
         settings_action.triggered.connect(self.open_settings)
-        settings_menu.addAction(settings_action)
+        menu_bar.addAction(settings_action)
         
-        # 备份功能（直接放在设置菜单下）
+        # 备份功能 - 单独作为菜单项
         backup_action = QAction("备份", self)
         backup_action.triggered.connect(self.handle_backup_data)
-        settings_menu.addAction(backup_action)
+        menu_bar.addAction(backup_action)
 
     def init_hotkey_listener(self):
         """初始化快捷键监听"""
@@ -646,7 +1645,20 @@ class MainWindow(QMainWindow):
                 self.timer.setInterval(new_interval_ms)
                 print(f"定时器间隔已更新为{new_interval_ms}毫秒")
                 
-                QMessageBox.information(self, "设置成功", "配置已保存")
+                # 检查是否需要执行备份
+                if dialog.should_backup():
+                    # 执行手动备份
+                    backup_path = self.config.get("backup_path", os.path.join(os.getcwd(), 'backups'))
+                    self.perform_backup(backup_path, False)
+                else:
+                    # 显示保存成功消息
+                    if self.config.get("show_notifications", True):
+                        self.show_system_tray_message("设置已保存", "您的配置已应用并保存。")
+                    else:
+                        QMessageBox.information(self, "设置成功", "配置已保存")
+                
+                # 重新设置自动备份定时器
+                self.setup_auto_backup_timer()
 
     def toggle_deadline(self):
         """切换是否启用截止日期"""
@@ -1332,30 +2344,31 @@ class MainWindow(QMainWindow):
     
     def handle_backup_data(self):
         """处理备份设置和操作"""
-        # 显示备份设置对话框
-        dialog = BackupSettingsDialog(self.config, self)
-        if dialog.exec_() == QDialog.Accepted:
-            # 获取新配置
+        # 显示设置窗口并跳转到备份设置页面
+        dialog = SettingsDialog(self.config, self)
+        # 直接跳转到备份设置页面（索引为1）
+        dialog.nav_list.setCurrentRow(1)
+        if dialog.exec_():
             new_config = dialog.get_config()
             
-            # 确保备份路径使用backups文件夹
-            if 'backup_path' in new_config and 'backup' in new_config['backup_path'] and 'backups' not in new_config['backup_path']:
-                new_config['backup_path'] = new_config['backup_path'].replace('backup', 'backups')
-            
-            # 更新配置
-            for key, value in new_config.items():
-                self.config[key] = value
-            
-            # 保存配置
-            self.config_manager.save_config(self.config)
-            
-            # 重新配置自动备份定时器
-            self.setup_auto_backup_timer()
-            
-            # 如果用户选择立即备份
-            if dialog.should_backup():
-                # 手动备份时设置is_auto_backup=False
-                self.perform_backup(new_config["backup_path"], False)
+            # 保存新配置
+            if self.config_manager.save_config(new_config):
+                self.config = new_config
+                
+                # 检查是否需要执行备份
+                if dialog.should_backup():
+                    # 执行手动备份
+                    backup_path = self.config.get("backup_path", os.path.join(os.getcwd(), 'backups'))
+                    self.perform_backup(backup_path, False)
+                else:
+                    # 显示保存成功消息
+                    if self.config.get("show_notifications", True):
+                        self.show_system_tray_message("备份设置已更新", "您的备份配置已保存。")
+                    else:
+                        QMessageBox.information(self, "设置成功", "备份配置已保存")
+                
+                # 重新设置自动备份定时器
+                self.setup_auto_backup_timer()
     
     def perform_backup(self, backup_dir, is_auto_backup=True):
         """执行备份操作

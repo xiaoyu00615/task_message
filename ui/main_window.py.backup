@@ -1090,10 +1090,8 @@ class SettingsDialog(QDialog):
             QMessageBox.information(self, "重置成功", "所有设置已重置为默认值。")
 
     def accept(self):
-        """确认设置 - 确保备份间隔正确保存"""
-        print("[SettingsDialog] 保存设置")
-        
-        # 保存窗口大小设置
+        """确认设置"""
+        # 保存窗口设置
         self.config["window_width"] = self.width_spin.value()
         self.config["window_height"] = self.height_spin.value()
         
@@ -1101,39 +1099,30 @@ class SettingsDialog(QDialog):
         self.config["show_notifications"] = self.notify_check.isChecked()
         self.config["deadline_notifications"] = self.deadline_notify_check.isChecked()
         self.config["overdue_notifications"] = self.overdue_notify_check.isChecked()
-        self.config["notification_preview"] = self.preview_notification_check.isChecked()
         
         # 保存更新设置
         self.config["update_interval"] = self.update_interval_spin.value()
         self.config["auto_save"] = self.auto_save_check.isChecked()
         
-        # 保存自动备份设置
+        # 保存界面设置
+        self.config["theme"] = self.theme_combo.currentIndex()
+        
+        # 保存备份设置
         self.config["auto_backup_enabled"] = self.auto_backup_check.isChecked()
-        
-        # 重要：直接保存用户设置的备份间隔，不做任何默认值处理
         backup_interval = self.interval_spin.value()
-        self.config["backup_interval"] = backup_interval
         print(f"[SettingsDialog] 保存备份间隔: {backup_interval}分钟")
+        self.config["backup_interval"] = backup_interval
         
-        # 设置备份路径
+        # 设置默认备份目录为backups文件夹
         backup_path = self.backup_path_edit.text()
         if not backup_path or backup_path == '.':
             backup_path = os.path.join(os.getcwd(), 'backups')
+        # 确保使用backups文件夹而不是backup文件夹
+        if 'backup' in backup_path and 'backups' not in backup_path:
+            backup_path = backup_path.replace('backup', 'backups')
         self.config["backup_path"] = backup_path
         
-        # 保存主题设置
-        self.config["theme"] = self.theme_combo.currentIndex()
-        
-        # 调用父类的accept方法
         super().accept()
-        
-    def closeEvent(self, event):
-        """关闭窗口时自动保存设置"""
-        print("[SettingsDialog] 关闭窗口，自动保存设置")
-        # 调用accept方法来保存设置
-        self.accept()
-        # 接受关闭事件
-        event.accept()
 
     def get_config(self):
         """返回修改后的配置"""
@@ -1367,7 +1356,10 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.open_settings)
         menu_bar.addAction(settings_action)
         
-        # 备份功能已整合到设置中，不再需要单独的菜单项
+        # 备份功能 - 单独作为菜单项
+        backup_action = QAction("备份", self)
+        backup_action.triggered.connect(self.handle_backup_data)
+        menu_bar.addAction(backup_action)
 
     def init_hotkey_listener(self):
         """初始化快捷键监听"""
@@ -1662,6 +1654,37 @@ class MainWindow(QMainWindow):
         
         # 返回面板
         return panel
+
+    def open_settings(self):
+        """打开设置对话框"""
+        dialog = SettingsDialog(self.config, self)
+        if dialog.exec_():
+            new_config = dialog.get_config()
+            # 保存新配置
+            if self.config_manager.save_config(new_config):
+                self.config = new_config
+                # 应用窗口大小设置
+                self.resize(self.config["window_width"], self.config["window_height"])
+                
+                # 更新定时器间隔（秒转换为毫秒）
+                new_interval_ms = self.config["update_interval"] * 1000
+                self.timer.setInterval(new_interval_ms)
+                print(f"定时器间隔已更新为{new_interval_ms}毫秒")
+                
+                # 检查是否需要执行备份
+                if dialog.should_backup():
+                    # 执行手动备份
+                    backup_path = self.config.get("backup_path", os.path.join(os.getcwd(), 'backups'))
+                    self.perform_backup(backup_path, False)
+                else:
+                    # 显示保存成功消息
+                    if self.config.get("show_notifications", True):
+                        self.show_system_tray_message("设置已保存", "您的配置已应用并保存。")
+                    else:
+                        QMessageBox.information(self, "设置成功", "配置已保存")
+                
+                # 重新设置自动备份定时器
+                self.setup_auto_backup_timer()
 
     def toggle_deadline(self):
         """切换是否启用截止日期"""
@@ -2472,56 +2495,6 @@ class MainWindow(QMainWindow):
                     f"备份过程中发生错误:\n{str(e)}"
                 )
     
-    def open_settings(self):
-        """打开设置对话框 - 确保配置正确保存和应用"""
-        print("[MainWindow] 打开设置对话框")
-        print(f"[MainWindow] 当前配置: backup_interval={self.config.get('backup_interval', 60)}")
-        
-        dialog = SettingsDialog(self.config, self)
-        # 执行对话框，不管用户如何关闭，我们都会获取并保存配置
-        dialog.exec_()
-        
-        # 总是获取配置并保存，因为closeEvent中会调用accept()更新配置
-        new_config = dialog.get_config()
-        print(f"[MainWindow] 从对话框获取新配置: backup_interval={new_config.get('backup_interval', 60)}")
-        
-        # 保存新配置
-        if self.config_manager.save_config(new_config):
-            # 重要修复：直接替换整个配置字典
-            self.config = new_config.copy()
-            print(f"[MainWindow] 配置已保存并更新: backup_interval={self.config.get('backup_interval', 60)}")
-            
-            # 应用窗口大小设置
-            self.resize(self.config["window_width"], self.config["window_height"])
-            
-            # 更新定时器间隔（秒转换为毫秒）
-            new_interval_ms = self.config["update_interval"] * 1000
-            self.timer.setInterval(new_interval_ms)
-            print(f"定时器间隔已更新为{new_interval_ms}毫秒")
-            
-            # 检查是否需要执行备份
-            if dialog.should_backup():
-                # 执行手动备份
-                backup_path = self.config.get("backup_path", os.path.join(os.getcwd(), 'backups'))
-                self.perform_backup(backup_path, False)
-                # 显示保存成功消息
-                if self.config.get("show_notifications", True):
-                    self.show_system_tray_message("设置已保存", "您的配置已应用并保存。")
-                else:
-                    QMessageBox.information(self, "设置成功", "配置已保存")
-            else:
-                # 显示保存成功消息
-                if self.config.get("show_notifications", True):
-                    self.show_system_tray_message("设置已保存", "您的配置已应用并保存。")
-                else:
-                    QMessageBox.information(self, "设置成功", "配置已保存")
-            
-            # 重新设置自动备份定时器
-            self.setup_auto_backup_timer()
-        else:
-            print("[MainWindow] 配置保存失败")
-            QMessageBox.critical(self, "保存失败", "无法保存配置设置。请检查文件权限。")
-            
     def setup_auto_backup_timer(self):
         """设置自动备份定时器"""
         import time

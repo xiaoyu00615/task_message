@@ -110,6 +110,117 @@ class SettingsDialog(QDialog):
         return self.config
 
 
+class BackupSettingsDialog(QDialog):
+    """备份设置对话框"""
+
+    def __init__(self, config, parent=None):
+        super().__init__(parent)
+        self.config = config.copy()  # 复制当前配置
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("备份设置")
+        self.setGeometry(200, 200, 400, 300)
+        layout = QVBoxLayout(self)
+
+        # 自动备份设置
+        auto_backup_group = QGroupBox("自动备份设置")
+        auto_backup_layout = QVBoxLayout()
+
+        # 启用自动备份复选框
+        self.auto_backup_check = QCheckBox("启用自动备份")
+        self.auto_backup_check.setChecked(self.config.get("auto_backup_enabled", False))
+        self.auto_backup_check.stateChanged.connect(self.toggle_auto_backup_options)
+        auto_backup_layout.addWidget(self.auto_backup_check)
+
+        # 备份间隔设置（分钟）
+        interval_layout = QHBoxLayout()
+        interval_layout.addWidget(QLabel("备份间隔（分钟）:"))
+        self.interval_spin = QSpinBox()
+        self.interval_spin.setRange(1, 10080)  # 最大7天（60*24*7）
+        self.interval_spin.setValue(self.config.get("backup_interval", 60))
+        interval_layout.addWidget(self.interval_spin)
+        auto_backup_layout.addLayout(interval_layout)
+
+        # 备份路径设置
+        path_layout = QHBoxLayout()
+        path_layout.addWidget(QLabel("备份目录:"))
+        self.backup_path_edit = QLineEdit()
+        # 默认使用backups文件夹作为备份路径
+        default_backup_path = os.path.join(os.getcwd(), 'backups')
+        self.backup_path_edit.setText(self.config.get("backup_path", default_backup_path))
+        path_layout.addWidget(self.backup_path_edit, 1)
+        browse_btn = QPushButton("浏览")
+        browse_btn.clicked.connect(self.browse_backup_path)
+        path_layout.addWidget(browse_btn)
+        auto_backup_layout.addLayout(path_layout)
+
+        auto_backup_group.setLayout(auto_backup_layout)
+        layout.addWidget(auto_backup_group)
+
+        # 手动备份按钮
+        manual_backup_btn = QPushButton("立即手动备份")
+        manual_backup_btn.setMinimumHeight(40)
+        manual_backup_btn.setStyleSheet("font-size: 14px;")
+        manual_backup_btn.clicked.connect(self.accept_and_backup)
+        layout.addWidget(manual_backup_btn)
+
+        # 按钮区域
+        btn_layout = QHBoxLayout()
+        self.ok_btn = QPushButton("确定")
+        self.ok_btn.clicked.connect(self.accept)
+        self.cancel_btn = QPushButton("取消")
+        self.cancel_btn.clicked.connect(self.reject)
+
+        btn_layout.addWidget(self.ok_btn)
+        btn_layout.addWidget(self.cancel_btn)
+        layout.addLayout(btn_layout)
+
+        # 初始状态设置
+        self.toggle_auto_backup_options()
+
+    def toggle_auto_backup_options(self):
+        """根据是否启用自动备份来启用/禁用相关选项"""
+        enabled = self.auto_backup_check.isChecked()
+        self.interval_spin.setEnabled(enabled)
+        self.backup_path_edit.setEnabled(enabled)
+
+    def browse_backup_path(self):
+        """浏览选择备份目录"""
+        path = QFileDialog.getExistingDirectory(
+            self, 
+            "选择备份目录",
+            self.backup_path_edit.text()
+        )
+        if path:
+            self.backup_path_edit.setText(path)
+
+    def accept_and_backup(self):
+        """接受设置并立即备份"""
+        self.do_backup = True
+        self.accept()
+
+    def accept(self):
+        """确认设置"""
+        self.config["auto_backup_enabled"] = self.auto_backup_check.isChecked()
+        self.config["backup_interval"] = self.interval_spin.value()
+        # 设置默认备份目录为backups文件夹
+        backup_path = self.backup_path_edit.text()
+        if not backup_path or backup_path == '.':
+            backup_path = os.path.join(os.getcwd(), 'backups')
+        self.config["backup_path"] = backup_path
+        # 不要重置do_backup标志，保留之前的设置
+        super().accept()
+
+    def get_config(self):
+        """返回修改后的配置"""
+        return self.config
+
+    def should_backup(self):
+        """返回是否应该执行备份"""
+        return getattr(self, 'do_backup', False)
+
+
 class MainWindow(QMainWindow):
     """主窗口类"""
 
@@ -140,6 +251,9 @@ class MainWindow(QMainWindow):
         
         # 初始化定时器用于刷新倒计时显示
         self.init_timer()
+        
+        # 初始化自动备份定时器
+        self.setup_auto_backup_timer()
 
         # 默认隐藏窗口（后台运行）
         self.hide()
@@ -216,6 +330,11 @@ class MainWindow(QMainWindow):
         settings_action = QAction("打开设置", self)
         settings_action.triggered.connect(self.open_settings)
         settings_menu.addAction(settings_action)
+        
+        # 备份功能（直接放在设置菜单下）
+        backup_action = QAction("备份", self)
+        backup_action.triggered.connect(self.handle_backup_data)
+        settings_menu.addAction(backup_action)
 
     def init_hotkey_listener(self):
         """初始化快捷键监听"""
@@ -1211,6 +1330,161 @@ class MainWindow(QMainWindow):
             if list_widget and hasattr(list_widget, 'restore_selection') and selected_index >= 0:
                 list_widget.restore_selection(selected_index)
     
+    def handle_backup_data(self):
+        """处理备份设置和操作"""
+        # 显示备份设置对话框
+        dialog = BackupSettingsDialog(self.config, self)
+        if dialog.exec_() == QDialog.Accepted:
+            # 获取新配置
+            new_config = dialog.get_config()
+            
+            # 确保备份路径使用backups文件夹
+            if 'backup_path' in new_config and 'backup' in new_config['backup_path'] and 'backups' not in new_config['backup_path']:
+                new_config['backup_path'] = new_config['backup_path'].replace('backup', 'backups')
+            
+            # 更新配置
+            for key, value in new_config.items():
+                self.config[key] = value
+            
+            # 保存配置
+            self.config_manager.save_config(self.config)
+            
+            # 重新配置自动备份定时器
+            self.setup_auto_backup_timer()
+            
+            # 如果用户选择立即备份
+            if dialog.should_backup():
+                # 手动备份时设置is_auto_backup=False
+                self.perform_backup(new_config["backup_path"], False)
+    
+    def perform_backup(self, backup_dir, is_auto_backup=True):
+        """执行备份操作
+        
+        Args:
+            backup_dir: 备份目录路径
+            is_auto_backup: 是否为自动备份（True表示自动备份，使用托盘通知；False表示手动备份，使用弹窗通知）
+        """
+        try:
+            # 确保导入json模块
+            import json
+            
+            # 确保使用backups文件夹而不是backup文件夹
+            if 'backup' in backup_dir and 'backups' not in backup_dir:
+                backup_dir = backup_dir.replace('backup', 'backups')
+            
+            # 获取当前时间
+            current_time = datetime.now()
+            time_str = current_time.strftime("%Y%m%d_%H%M")  # 精确到分钟
+            
+            # 创建基于日期的子目录
+            date_dir = current_time.strftime("%Y%m%d")
+            final_backup_dir = os.path.join(backup_dir, date_dir)
+            
+            # 确保备份目录存在
+            if not os.path.exists(final_backup_dir):
+                os.makedirs(final_backup_dir)
+            
+            # 加载当前任务数据
+            tasks_data = self.data_manager.load_tasks()
+            
+            # 备份为JSON格式
+            json_backup_filename = f"{time_str}-backup.json"
+            json_backup_path = os.path.join(final_backup_dir, json_backup_filename)
+            
+            with open(json_backup_path, 'w', encoding='utf-8') as f:
+                json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+            
+            # 备份为CSV格式
+            csv_backup_filename = f"{time_str}-backup.csv"
+            csv_backup_path = os.path.join(final_backup_dir, csv_backup_filename)
+            
+            # 创建CSV文件并写入数据
+            import csv
+            with open(csv_backup_path, 'w', newline='', encoding='utf-8') as f:
+                if tasks_data:
+                    # 获取所有可能的字段名
+                    fieldnames = ['name', 'deadline', 'importance', 'urgency', 'category', 'tags', 'create_time', 'done_time']
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    
+                    # 写入表头
+                    writer.writeheader()
+                    
+                    # 写入数据行
+                    for task in tasks_data:
+                        # 确保所有字段都存在，不存在的字段设为空
+                        row = {}
+                        for field in fieldnames:
+                            if field in task:
+                                # 对于列表类型的字段（如tags），转换为字符串
+                                if isinstance(task[field], list):
+                                    row[field] = ', '.join(task[field])
+                                else:
+                                    row[field] = task[field]
+                            else:
+                                row[field] = ''
+                        writer.writerow(row)
+            
+            if is_auto_backup:
+                # 自动备份：使用系统托盘显示简化通知
+                date_str = current_time.strftime("%Y-%m-%d %H:%M")
+                self.show_system_tray_message(
+                    "自动备份成功",
+                    f"数据已在{date_str}成功备份到指定目录\n包含JSON和CSV两种格式文件"
+                )
+            else:
+                # 手动备份：使用弹窗显示详细信息
+                QMessageBox.information(
+                    self, 
+                    "备份成功", 
+                    f"数据已成功备份到:\nJSON格式: {json_backup_path}\nCSV格式: {csv_backup_path}"
+                )
+            
+        except Exception as e:
+            if is_auto_backup:
+                # 自动备份：使用系统托盘显示失败通知
+                self.show_system_tray_message(
+                    "自动备份失败",
+                    f"备份过程中发生错误:\n{str(e)}",
+                    icon=QSystemTrayIcon.Critical,
+                    duration=3000  # 失败消息显示更长时间
+                )
+            else:
+                # 手动备份：使用弹窗显示失败详细信息
+                QMessageBox.critical(
+                    self, 
+                    "备份失败", 
+                    f"备份过程中发生错误:\n{str(e)}"
+                )
+    
+    def setup_auto_backup_timer(self):
+        """设置自动备份定时器"""
+        import time
+        print(f"[{time.strftime('%H:%M:%S')}] 开始设置自动备份定时器")
+        # 如果之前有定时器，先停止
+        if hasattr(self, 'auto_backup_timer'):
+            print(f"[{time.strftime('%H:%M:%S')}] 停止之前的备份定时器")
+            self.auto_backup_timer.stop()
+            delattr(self, 'auto_backup_timer')
+        
+        # 如果启用了自动备份，设置定时器
+        if self.config.get("auto_backup_enabled", False):
+            interval_minutes = self.config.get("backup_interval", 60)
+            interval_ms = interval_minutes * 60 * 1000  # 分钟转换为毫秒
+            backup_path = self.config.get("backup_path", os.path.join(os.getcwd(), 'backups'))
+            
+            print(f"[{time.strftime('%H:%M:%S')}] 启用自动备份，间隔: {interval_minutes}分钟 ({interval_ms}毫秒)")
+            print(f"[{time.strftime('%H:%M:%S')}] 备份路径: {backup_path}")
+            
+            self.auto_backup_timer = QTimer(self)
+            # 使用functools.partial代替lambda，确保正确传递参数
+            from functools import partial
+            # 明确指定is_auto_backup=True
+            self.auto_backup_timer.timeout.connect(partial(self.perform_backup, backup_path, True))
+            self.auto_backup_timer.start(interval_ms)
+            print(f"[{time.strftime('%H:%M:%S')}] 自动备份定时器已启动")
+        else:
+            print(f"[{time.strftime('%H:%M:%S')}] 自动备份已禁用")
+
     def exit_app(self):
         """退出应用"""
         self.timer.stop()  # 停止定时器

@@ -12,7 +12,10 @@ class ConfigManager:
             "show_notifications": True,  # 是否显示提示信息
             "update_interval": 300,  # 数据更新时间间隔（秒），默认5分钟(300秒)
             "categories": ["工作", "学习", "生活", "其他"],  # 默认任务类别
-            "tags": ["重要", "紧急", "常规", "计划"]  # 默认标签列表
+            "tags": ["重要", "紧急", "常规", "计划"],  # 默认标签列表
+            "auto_backup_enabled": False,  # 默认禁用自动备份
+            "backup_interval": 60,  # 默认备份间隔（分钟）
+            "backup_path": os.path.join(os.getcwd(), 'backups')  # 默认备份路径
         }
 
     def load_config(self):

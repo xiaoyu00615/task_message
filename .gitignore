@@ -85,3 +85,5 @@ config.json
 .nfs*
 
 plan
+backups
+backup

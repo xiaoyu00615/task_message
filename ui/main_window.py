@@ -100,16 +100,9 @@ class SettingsDialog(QDialog):
         title_label.setStyleSheet("font-size: 20px; font-weight: bold; padding: 20px;")
         nav_layout.addWidget(title_label)
         
-        # 创建导航列表
-        self.nav_list = QListWidget()
-        self.nav_list.addItems(["基本设置", "备份与恢复", "外观设置", "通知设置", "数据更新设置", "快捷键设置"])
-        self.nav_list.setCurrentRow(0)
-        # 移除不需要的itemClicked连接，使用currentRowChanged即可
-        nav_layout.addWidget(self.nav_list)
-        
         # 添加搜索框 - 更现代的搜索设计
         search_layout = QHBoxLayout()
-        search_layout.setContentsMargins(15, 20, 15, 10)
+        search_layout.setContentsMargins(15, 0, 15, 10)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("搜索设置...")
         self.search_input.setStyleSheet("""
@@ -126,6 +119,30 @@ class SettingsDialog(QDialog):
         """)
         search_layout.addWidget(self.search_input)
         nav_layout.addLayout(search_layout)
+        
+        # 创建导航列表
+        self.nav_list = QListWidget()
+        self.nav_list.addItems(["基本设置", "备份与恢复", "外观设置", "通知设置", "数据更新设置", "快捷键设置"])
+        self.nav_list.setCurrentRow(0)
+        self.nav_list.setStyleSheet("""
+            QListWidget {
+                border: none;
+                background-color: transparent;
+            }
+            QListWidget::item {
+                padding: 12px 20px;
+                height: 48px;
+                font-size: 14px;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            QListWidget::item:selected {
+                background-color: #e6f2ff;
+                color: #0078d7;
+                border-left: 3px solid #0078d7;
+            }
+        """)
+        # 移除不需要的itemClicked连接，使用currentRowChanged即可
+        nav_layout.addWidget(self.nav_list, 1)  # 添加拉伸因子1，使导航列表铺满剩余高度
         
         # 添加底部间距
         nav_layout.addStretch()

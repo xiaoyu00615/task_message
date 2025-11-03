@@ -1850,16 +1850,34 @@ class MainWindow(QMainWindow):
 
         # 创建托盘菜单
         tray_menu = QMenu(self)
+        
+        # 为右键菜单添加鼠标经过效果
+        # 检查是否为深色主题
+        is_dark_theme = self.config.get("theme", 0) == 2
+        hover_bg = "#2D2D30" if is_dark_theme else "#F0F0F0"
+        bg_color = "#333333" if is_dark_theme else "#FFFFFF"
+        text_color = "#FFFFFF" if is_dark_theme else "#000000"
+        
+        tray_menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {bg_color};
+                color: {text_color};
+                border: 1px solid #ccc;
+                padding: 2px;
+            }}
+            QMenu::item {{
+                padding: 8px 30px;
+                border: 1px solid transparent;
+            }}
+            QMenu::item:selected {{
+                background-color: {hover_bg};
+            }}
+        """)
 
         # 显示窗口动作
         show_action = QAction("显示窗口", self)
         show_action.triggered.connect(self.show_window)
         tray_menu.addAction(show_action)
-
-        # 备份动作
-        backup_action = QAction("备份", self)
-        backup_action.triggered.connect(self.handle_backup_data)
-        tray_menu.addAction(backup_action)
 
         # 设置动作
         settings_action = QAction("设置", self)
@@ -1938,13 +1956,16 @@ class MainWindow(QMainWindow):
         # 左侧：垂直布局包含输入面板和搜索筛选
         left_layout = QVBoxLayout()
         
-        # 添加任务输入区域（放在顶部）
+        # 添加任务输入区域（放在顶部，设置固定高度）
         input_panel = self.create_input_panel()
         left_layout.addWidget(input_panel)
         
-        # 添加搜索和筛选面板（放在下面）
+        # 添加搜索和筛选面板（放在下面，设置为可拉伸）
         search_filter_panel = self.create_search_filter_panel()
-        left_layout.addWidget(search_filter_panel)
+        left_layout.addWidget(search_filter_panel, 1)  # 1表示拉伸因子
+        
+        # 添加拉伸空间，确保面板不会被压缩
+        left_layout.addStretch()
         
         # 创建左侧容器部件并应用布局
         left_widget = QWidget()
@@ -2099,7 +2120,11 @@ class MainWindow(QMainWindow):
 
 
         panel.setLayout(layout)
+        # 设置固定宽度，确保与搜索筛选面板一致
+        panel.setMinimumWidth(320)
         panel.setMaximumWidth(320)
+        # 设置最大高度，避免占用过多空间
+        panel.setMaximumHeight(400)
         return panel
         
     def create_search_filter_panel(self):
@@ -2111,18 +2136,39 @@ class MainWindow(QMainWindow):
         
         # 创建内容容器
         content_widget = QWidget()
+        content_widget.setVisible(False)  # 默认隐藏内容
+        
+        # 合并的toggled信号处理器
+        def on_toggled(checked):
+            content_widget.setVisible(checked)
+            if checked:
+                panel.raise_()  # 确保面板在最上层
+                content_widget.raise_()  # 确保内容也在最上层
+        
+        panel.toggled.connect(on_toggled)
         
         # 使用表单布局，一行一个筛选项
         form_layout = QFormLayout(content_widget)
-        form_layout.setVerticalSpacing(8)  # 减小垂直间距
-        form_layout.setHorizontalSpacing(12)  # 减小水平间距
+        form_layout.setVerticalSpacing(15)  # 显著增加垂直间距
+        form_layout.setHorizontalSpacing(20)  # 显著增加水平间距
         form_layout.setFormAlignment(Qt.AlignTop)  # 设置顶部对齐
         form_layout.setLabelAlignment(Qt.AlignLeft)  # 标签左对齐
+        form_layout.setContentsMargins(15, 15, 15, 15)  # 显著增加内边距
         
         # 创建搜索输入框
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("输入关键词搜索任务...")
-        self.search_input.setMinimumHeight(28)  # 减小高度
+        self.search_input.setMinimumHeight(36)  # 显著增大高度
+        self.search_input.setMinimumWidth(180)  # 增大宽度
+        # 添加样式使搜索框更明显
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+        """)
         self.search_input.textChanged.connect(self.handle_search_filter)  # 实时搜索
         form_layout.addRow("搜索任务:", self.search_input)
         
@@ -2130,8 +2176,17 @@ class MainWindow(QMainWindow):
         self.category_filter = QComboBox()
         self.category_filter.addItem("所有类别")
         self.category_filter.addItems(self.config["categories"])
-        self.category_filter.setMinimumHeight(28)  # 减小高度
-        self.category_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.category_filter.setMinimumHeight(36)  # 显著增大高度
+        self.category_filter.setMinimumWidth(180)  # 增大宽度
+        # 添加样式使下拉框更明显
+        self.category_filter.setStyleSheet("""
+            QComboBox {
+                padding: 8px 12px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+        """)
         self.category_filter.currentIndexChanged.connect(self.handle_search_filter)
         form_layout.addRow("类别:", self.category_filter)
         
@@ -2140,8 +2195,16 @@ class MainWindow(QMainWindow):
         self.tag_filter.addItem("所有标签")
         self.tag_filter.addItem("无标签")
         self.tag_filter.addItems(self.config["tags"])
-        self.tag_filter.setMinimumHeight(28)  # 减小高度
-        self.tag_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.tag_filter.setMinimumHeight(36)  # 显著增大高度
+        self.tag_filter.setMinimumWidth(180)  # 增大宽度
+        self.tag_filter.setStyleSheet("""
+            QComboBox {
+                padding: 8px 12px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+        """)
         self.tag_filter.currentIndexChanged.connect(self.handle_search_filter)
         form_layout.addRow("标签:", self.tag_filter)
         
@@ -2149,8 +2212,16 @@ class MainWindow(QMainWindow):
         self.importance_filter = QComboBox()
         self.importance_filter.addItem("所有重要度")
         self.importance_filter.addItems(["1星 (一般)", "2星 (重要)", "3星 (非常重要)"])
-        self.importance_filter.setMinimumHeight(28)  # 减小高度
-        self.importance_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.importance_filter.setMinimumHeight(36)  # 显著增大高度
+        self.importance_filter.setMinimumWidth(180)  # 增大宽度
+        self.importance_filter.setStyleSheet("""
+            QComboBox {
+                padding: 8px 12px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+        """)
         self.importance_filter.currentIndexChanged.connect(self.handle_search_filter)
         form_layout.addRow("重要等级:", self.importance_filter)
         
@@ -2164,8 +2235,16 @@ class MainWindow(QMainWindow):
             "4-较不紧急",
             "5-最不紧急"
         ])
-        self.urgency_filter.setMinimumHeight(28)  # 减小高度
-        self.urgency_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.urgency_filter.setMinimumHeight(36)  # 显著增大高度
+        self.urgency_filter.setMinimumWidth(180)  # 增大宽度
+        self.urgency_filter.setStyleSheet("""
+            QComboBox {
+                padding: 8px 12px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+        """)
         self.urgency_filter.currentIndexChanged.connect(self.handle_search_filter)
         form_layout.addRow("紧急度:", self.urgency_filter)
         
@@ -2180,20 +2259,44 @@ class MainWindow(QMainWindow):
             "本月内",
             "无截止日期"
         ])
-        self.deadline_filter.setMinimumHeight(28)  # 减小高度
-        self.deadline_filter.setMinimumWidth(150)  # 设置合适宽度
+        self.deadline_filter.setMinimumHeight(36)  # 显著增大高度
+        self.deadline_filter.setMinimumWidth(180)  # 增大宽度
+        self.deadline_filter.setStyleSheet("""
+            QComboBox {
+                padding: 8px 12px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+        """)
         self.deadline_filter.currentIndexChanged.connect(self.handle_search_filter)
         form_layout.addRow("截止日期:", self.deadline_filter)
         
         # 创建重置按钮
         reset_button = QPushButton("重置筛选")
-        reset_button.setMinimumHeight(32)  # 减小高度
-        reset_button.setStyleSheet("font-size: 12px;")  # 减小字体
+        reset_button.setMinimumHeight(40)  # 显著增大高度
+        reset_button.setMinimumWidth(120)  # 设置宽度
+        # 添加样式使按钮更明显
+        reset_button.setStyleSheet("""
+            QPushButton {
+                padding: 10px 20px;
+                background-color: #0078d4;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+        """)
         reset_button.clicked.connect(self.reset_search_filter)
         
         # 创建按钮布局
         button_layout = QHBoxLayout()
         button_layout.addWidget(reset_button)
+        button_layout.setContentsMargins(0, 15, 0, 0)  # 显著增加顶部间距
         
         # 添加按钮布局到表单布局
         form_layout.addRow(button_layout)
@@ -2201,16 +2304,17 @@ class MainWindow(QMainWindow):
         # 创建面板的主布局
         main_layout = QVBoxLayout()
         main_layout.addWidget(content_widget)
-        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setContentsMargins(10, 10, 10, 10)  # 增大面板内边距
         
         # 设置面板布局
         panel.setLayout(main_layout)
         
-        # 连接信号，当面板勾选状态改变时更新内容可见性
-        panel.toggled.connect(content_widget.setVisible)
-        
         # 初始状态下隐藏内容
         content_widget.setVisible(False)
+        
+        # 设置固定宽度，确保初始宽度和展开宽度保持一致
+        panel.setMinimumWidth(320)
+        panel.setMaximumWidth(320)
         
         # 返回面板
         return panel

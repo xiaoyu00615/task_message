@@ -384,6 +384,39 @@ class TaskItemWidget(QWidget):
                     font.setStrikeOut(True)
                     widget.setFont(font)
     
+    def enterEvent(self, event):
+        """鼠标进入事件处理，实现鼠标经过效果"""
+        # 保存当前背景色
+        self.original_palette = self.palette()
+        
+        # 创建新的调色板
+        new_palette = QPalette(self.original_palette)
+        
+        # 根据主题设置不同的悬停背景色
+        if hasattr(self, 'is_dark_theme') and self.is_dark_theme:
+            new_palette.setColor(QPalette.Window, QColor(45, 45, 48))  # 深色主题悬停色
+        else:
+            new_palette.setColor(QPalette.Window, QColor(240, 240, 240))  # 浅色主题悬停色
+        
+        # 应用新的调色板
+        self.setPalette(new_palette)
+        
+        # 确保背景色变化立即生效
+        self.update()
+        
+        # 调用父类方法
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event):
+        """鼠标离开事件处理，恢复原始背景色"""
+        # 恢复原始背景色
+        if hasattr(self, 'original_palette'):
+            self.setPalette(self.original_palette)
+            self.update()
+        
+        # 调用父类方法
+        super().leaveEvent(event)
+    
     def mousePressEvent(self, event):
         """增强的鼠标按下事件处理，确保可靠选中对应的QListWidgetItem"""
         # 调用父类方法

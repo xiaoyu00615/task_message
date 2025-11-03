@@ -671,7 +671,9 @@ class StatisticsWidget(QWidget):
         super(StatisticsWidget, self).__init__(parent)
         self.task_handler = task_handler
         self.statistics_manager = StatisticsManager(task_handler)
+        self.is_dark_theme = False
         self.init_ui()
+        self._apply_theme_styles()
     
     def init_ui(self):
         # 创建主布局
@@ -681,19 +683,19 @@ class StatisticsWidget(QWidget):
         title_layout = QHBoxLayout()
         
         # 创建标题
-        title_label = QLabel("任务统计与报表")
+        self.title_label = QLabel("任务统计与报表")
         font = QFont()
         font.setBold(True)
         font.setPointSize(16)
-        title_label.setFont(font)
+        self.title_label.setFont(font)
         
         # 整体导出按钮
-        export_all_btn = QPushButton("导出所有数据")
-        export_all_btn.clicked.connect(self.export_all_data)
+        self.export_all_btn = QPushButton("导出所有数据")
+        self.export_all_btn.clicked.connect(self.export_all_data)
         
-        title_layout.addWidget(title_label)
-        title_layout.addWidget(export_all_btn)
-        title_layout.setAlignment(title_label, Qt.AlignCenter)
+        title_layout.addWidget(self.title_label)
+        title_layout.addWidget(self.export_all_btn)
+        title_layout.setAlignment(self.title_label, Qt.AlignCenter)
         
         # 创建统计卡片组件
         stats_card_widget = StatisticsCardWidget(self.statistics_manager)
@@ -718,6 +720,30 @@ class StatisticsWidget(QWidget):
         
         # 设置布局
         self.setLayout(main_layout)
+    
+    def _apply_theme_styles(self):
+        """
+        应用主题样式
+        """
+        if self.is_dark_theme:
+            self.setStyleSheet(""
+                "QWidget { background-color: #1e1e1e; color: #ffffff; }"
+                "QLabel { color: #ffffff; }"
+                "QPushButton { background-color: #0e639c; color: #ffffff; border: none; padding: 6px 12px; border-radius: 4px; }"
+                "QPushButton:hover { background-color: #1177bb; }"
+                "QPushButton:pressed { background-color: #0d5b8a; }"
+            )
+            self.title_label.setStyleSheet("color: #ffffff;")
+        else:
+            self.setStyleSheet("")
+            self.title_label.setStyleSheet("")
+    
+    def set_dark_theme(self, is_dark):
+        """
+        设置深色主题
+        """
+        self.is_dark_theme = is_dark
+        self._apply_theme_styles()
     
     def export_all_data(self):
         """

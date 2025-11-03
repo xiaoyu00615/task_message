@@ -52,12 +52,15 @@ class TaskItemWidget(QWidget):
         self.deadline = deadline
         self.done_time = done_time
         self.task_data = task_data  # 存储完整的任务数据引用
+        self.is_dark_theme = False  # 默认不是深色主题
         self.setAutoFillBackground(True)
         self.setMouseTracking(True)  # 启用鼠标跟踪
         # 确保小部件能接收鼠标事件
         self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
         self.setFocusPolicy(Qt.StrongFocus)
         self.init_ui(text)
+        # 初始化时设置深色模式支持
+        self.set_dark_theme_support()
     
     def eventFilter(self, source, event):
         """事件过滤器，捕获所有鼠标事件并确保选中状态"""
@@ -71,8 +74,21 @@ class TaskItemWidget(QWidget):
         """为自身安装事件过滤器"""
         self.installEventFilter(self)
 
+    def set_dark_theme_support(self):
+        # 检测父级是否为深色主题
+        parent = self.parent()
+        if parent and hasattr(parent, 'parent'):
+            grandparent = parent.parent()
+            if grandparent and hasattr(grandparent, 'config'):
+                theme_index = grandparent.config.get("theme", 0)
+                self.is_dark_theme = (theme_index == 2)
+            else:
+                self.is_dark_theme = False
+        else:
+            self.is_dark_theme = False
+    
     def init_ui(self, text):
-        # 统一浅蓝色背景
+        # 设置为透明背景，让它继承列表的背景色
         self.setStyleSheet("""
             padding: 0px;
             background-color: transparent;
@@ -106,12 +122,17 @@ class TaskItemWidget(QWidget):
         
         # 确保至少有1行文本
         if len(lines) >= 1:
-            # 事务名称（纯黑色）
+            # 事务名称 - 在深色模式下使用白色文本
             name_label = QLabel(lines[0])
             name_font = QFont()
             name_font.setPointSize(13)
             name_font.setBold(True)
             name_label.setFont(name_font)
+            # 深色模式下明确设置为白色文本
+            if hasattr(self, 'is_dark_theme') and self.is_dark_theme:
+                name_label.setStyleSheet("color: #ffffff;")
+            else:
+                name_label.setStyleSheet("color: #333333;")
             content_layout.addWidget(name_label)
 
         # 重要度和紧急度信息
@@ -120,6 +141,11 @@ class TaskItemWidget(QWidget):
             info_font = QFont()
             info_font.setPointSize(11)
             info_label.setFont(info_font)
+            # 深色模式下明确设置为白色文本
+            if hasattr(self, 'is_dark_theme') and self.is_dark_theme:
+                info_label.setStyleSheet("color: #ffffff;")
+            else:
+                info_label.setStyleSheet("color: #333333;")
             content_layout.addWidget(info_label)
 
         # 创建时间和截止日期信息
@@ -140,6 +166,11 @@ class TaskItemWidget(QWidget):
                 create_font = QFont()
                 create_font.setPointSize(10)
                 create_label.setFont(create_font)
+                # 深色模式下明确设置为白色文本
+                if hasattr(self, 'is_dark_theme') and self.is_dark_theme:
+                    create_label.setStyleSheet("color: #ffffff;")
+                else:
+                    create_label.setStyleSheet("color: #333333;")
                 create_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
                 content_layout.addWidget(create_label)
             
@@ -153,6 +184,7 @@ class TaskItemWidget(QWidget):
                 done_font.setPointSize(10)
                 done_font.setBold(True)  # 完成日期加粗显示
                 done_label.setFont(done_font)
+                # 已完成任务的日期标签已有特殊颜色，不需要额外设置
                 
                 # 检查是否为超时完成
                 is_overdue_completion = False
@@ -847,6 +879,7 @@ class TaskListWidget(QWidget):
     def __init__(self, task_type, parent=None):
         super().__init__(parent)
         self.task_type = task_type
+        self.is_dark_theme = False  # 默认不是深色主题
         self.init_ui()
 
     def init_ui(self):
@@ -861,14 +894,34 @@ class TaskListWidget(QWidget):
                 border: 1px solid #ddd;
                 border-radius: 6px;
                 padding: 8px;
-                background-color: #ffffff;
+                /* 不设置固定背景色，让它继承自应用的主题样式 */
             }
             QListWidget::item {
                 margin: 3px 0;
+                background-color: transparent;
+                border-radius: 6px;
             }
             QListWidget::item:selected {
                 background-color: #e6f2ff;
                 border-radius: 6px;
+            }
+            /* 深色主题样式调整 */
+            QListWidget[darkTheme="true"] {
+                border: 1px solid #3e3e42;
+                background-color: #252526;
+            }
+            QListWidget[darkTheme="true"]::item {
+                background-color: #252526;
+                color: #ffffff;
+            }
+            QListWidget[darkTheme="true"]::item:selected {
+                background-color: #0e639c;
+                color: #ffffff;
+                border-radius: 6px;
+            }
+            /* 确保深色主题下任务项文本可见 */
+            QListWidget[darkTheme="true"] QLabel {
+                color: #ffffff;
             }
         """)
         
@@ -881,7 +934,7 @@ class TaskListWidget(QWidget):
         
         layout.addWidget(self.list_widget)
 
-        # 按钮样式（增大尺寸）
+        # 按钮样式（增大尺寸并增强文字对比度）
         btn_style = """
             QPushButton {
                 padding: 8px;
@@ -890,16 +943,24 @@ class TaskListWidget(QWidget):
                 background-color: #f5f5f5;
                 margin: 4px 0;
                 font-size: 14px;
+                color: #333333;  /* 深灰色文本，提高对比度 */
+                font-weight: 600;
             }
             QPushButton:hover {
                 background-color: #e9e9e9;
+                color: #000000;  /* 鼠标悬停时文本颜色更深 */
             }
         """
 
         if self.task_type in ["todo", "overdue"]:
             self.done_btn = QPushButton("标记为完成")
             self.done_btn.setMinimumHeight(36)  # 增大按钮高度
-            self.done_btn.setStyleSheet(btn_style + "font-weight: bold;")
+            # 为完成按钮设置更高对比度的样式，确保文字清晰可见
+            done_btn_style = btn_style + ""
+            done_btn_style += "    font-weight: bold;\n"
+            done_btn_style += "    background-color: #f0f0f0;\n"
+            done_btn_style += "    color: #222222;\n"
+            self.done_btn.setStyleSheet(done_btn_style)
             layout.addWidget(self.done_btn)
 
         self.delete_btn = QPushButton("删除任务")
@@ -907,6 +968,89 @@ class TaskListWidget(QWidget):
         self.delete_btn.setStyleSheet(btn_style)
         layout.addWidget(self.delete_btn)
 
+    def set_dark_theme(self, enabled):
+        """设置深色主题"""
+        self.is_dark_theme = enabled
+        # 更新QListWidget的属性
+        self.list_widget.setProperty("darkTheme", "true" if enabled else "false")
+        # 重新应用样式表
+        self.list_widget.style().unpolish(self.list_widget)
+        self.list_widget.style().polish(self.list_widget)
+        self.list_widget.update()
+        
+        # 更新所有现有任务项的深色主题设置
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            task_widget = self.list_widget.itemWidget(item)
+            if hasattr(task_widget, 'is_dark_theme'):
+                task_widget.is_dark_theme = enabled
+                # 重新应用样式
+                self._update_task_widget_style(task_widget)
+        
+        # 更新按钮样式以适应深色主题
+        if enabled:
+            # 深色模式下使用蓝色按钮
+            dark_btn_style = """
+                QPushButton {
+                    padding: 8px;
+                    border-radius: 6px;
+                    border: 1px solid #3e3e42;
+                    background-color: #0e639c;
+                    margin: 4px 0;
+                    font-size: 14px;
+                    color: #ffffff;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #1177bb;
+                    color: #ffffff;
+                    font-weight: bold;
+                }
+            """
+            # 更新标记为完成按钮样式
+            if hasattr(self, 'done_btn'):
+                self.done_btn.setStyleSheet(dark_btn_style + "    font-weight: bold;")
+            # 更新删除按钮样式
+            if hasattr(self, 'delete_btn'):
+                self.delete_btn.setStyleSheet(dark_btn_style)
+        else:
+            # 恢复浅色模式样式
+            btn_style = """
+                QPushButton {
+                    padding: 8px;
+                    border-radius: 6px;
+                    border: 1px solid #ccc;
+                    background-color: #f5f5f5;
+                    margin: 4px 0;
+                    font-size: 14px;
+                    color: #333333;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #e9e9e9;
+                    color: #000000;
+                }
+            """
+            # 恢复标记为完成按钮样式
+            if hasattr(self, 'done_btn'):
+                done_btn_style = btn_style + "    font-weight: bold;\n    background-color: #f0f0f0;\n    color: #222222;"
+                self.done_btn.setStyleSheet(done_btn_style)
+            # 恢复删除按钮样式
+            if hasattr(self, 'delete_btn'):
+                self.delete_btn.setStyleSheet(btn_style)
+    
+    def _update_task_widget_style(self, task_widget):
+        """更新任务项的样式"""
+        # 更新所有标签的颜色
+        for label in task_widget.findChildren(QLabel):
+            # 跳过特殊颜色的标签（如完成日期、倒计时等）
+            if any(keyword in label.text() for keyword in ["已完成", "剩余时间", "截止时间"]):
+                continue
+            if self.is_dark_theme:
+                label.setStyleSheet("color: #ffffff;")
+            else:
+                label.setStyleSheet("color: #333333;")
+    
     def add_task_item(self, task_text, index, urgency=1, is_overdue=False, is_done=False, create_time=None, deadline=None, done_time=None, task_data=None):
         task_widget = TaskItemWidget(
             task_text,
@@ -919,6 +1063,10 @@ class TaskListWidget(QWidget):
             done_time=done_time,
             task_data=task_data
         )
+        # 设置深色主题属性
+        task_widget.is_dark_theme = self.is_dark_theme
+        # 更新任务项样式
+        self._update_task_widget_style(task_widget)
         # 安装事件过滤器以增强事件捕获
         task_widget.install_self_event_filter()
         
@@ -929,6 +1077,9 @@ class TaskListWidget(QWidget):
         
         # 确保QListWidgetItem能够正确响应鼠标事件
         item.setFlags(item.flags() | Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+        
+        # 确保按钮样式根据当前主题正确应用
+        self.set_dark_theme(self.is_dark_theme)
 
     def clear_list(self):
         self.list_widget.clear()

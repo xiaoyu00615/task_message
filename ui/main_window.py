@@ -46,10 +46,15 @@ class SettingsDialog(QDialog):
         import copy
         self.config = copy.deepcopy(config)
         self.do_backup = False  # 是否需要执行备份
+        # 获取当前主题设置，确定是否为深色模式
+        current_theme = self.config.get("theme", 0)
+        self.is_dark_theme = (current_theme == 2)  # 2表示深色主题
         self.init_ui()
         # 在UI初始化后显式更新备份设置控件，确保显示最新值
         print("[SettingsDialog] 初始化后更新备份设置控件")
         self.update_backup_settings_controls()
+        # 应用主题样式
+        self._apply_theme_styles()
 
     def init_ui(self):
         self.setWindowTitle("设置")
@@ -147,31 +152,39 @@ class SettingsDialog(QDialog):
         # 添加底部间距
         nav_layout.addStretch()
         
+        # 保存标题标签引用，用于后续样式更新
+        self.title_label = title_label
+        
+        # 保存导航部件引用
+        self.nav_widget = nav_widget
+        
         # 创建右侧内容区域 - 使用更现代的样式
         self.content_stack = QStackedWidget()
         self.content_stack.setStyleSheet("""
             QStackedWidget {
                 background-color: #ffffff;
+                color: #000000;
             }
             QWidget {
                 background-color: #ffffff;
+                color: #000000;
             }
         """)
         
-        # 添加各个设置页面
+        # 添加到主布局
+        main_layout.addWidget(self.nav_widget)
+        main_layout.addWidget(self.content_stack, 1)  # 1表示拉伸因子
+        
+        # 连接导航选择信号
+        self.nav_list.currentRowChanged.connect(self.content_stack.setCurrentIndex)
+        
+        # 添加各个设置页面（在nav_widget初始化后再调用）
         self.init_basic_settings_page()
         self.init_backup_settings_page()
         self.init_interface_settings_page()
         self.init_notification_settings_page()
         self.init_update_settings_page()
         self.init_hotkey_settings_page()
-        
-        # 添加到主布局
-        main_layout.addWidget(nav_widget)
-        main_layout.addWidget(self.content_stack, 1)  # 1表示拉伸因子
-        
-        # 连接导航选择信号
-        self.nav_list.currentRowChanged.connect(self.content_stack.setCurrentIndex)
     
     def init_basic_settings_page(self):
         """初始化基本设置页面"""
@@ -369,12 +382,16 @@ class SettingsDialog(QDialog):
         
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(1, 10080)  # 最大7天（60*24*7）
-        self.interval_spin.setMinimumWidth(120)
+        self.interval_spin.setMinimumWidth(150)  # 调整为更合适的宽度
+        self.interval_spin.setMinimumHeight(32)  # 调整为更合适的高度
+        self.interval_spin.setAlignment(Qt.AlignCenter)  # 文本居中显示
         self.interval_spin.setStyleSheet("""
             QSpinBox {
                 border: 1px solid #ddd;
                 border-radius: 4px;
-                padding: 6px;
+                padding: 5px 10px;
+                font-size: 14px;
+                font-weight: 500;
             }
         """)
         interval_layout.addWidget(self.interval_spin)
@@ -614,6 +631,8 @@ class SettingsDialog(QDialog):
         current_theme = self.config.get("theme", 0)
         if current_theme < self.theme_combo.count():
             self.theme_combo.setCurrentIndex(current_theme)
+        # 连接信号，当主题选择改变时更新预览
+        self.theme_combo.currentIndexChanged.connect(self.update_theme_preview)
         self.theme_combo.setMinimumHeight(35)
         self.theme_combo.setStyleSheet("""
             QComboBox {
@@ -636,8 +655,8 @@ class SettingsDialog(QDialog):
         theme_layout.addWidget(self.theme_combo)
         
         # 主题预览区域
-        preview_frame = QWidget()
-        preview_frame.setStyleSheet("""
+        self.preview_frame = QWidget()
+        self.preview_frame.setStyleSheet("""
             QWidget {
                 background-color: white;
                 border: 1px solid #ddd;
@@ -646,18 +665,23 @@ class SettingsDialog(QDialog):
                 padding: 15px;
             }
         """)
-        preview_layout = QVBoxLayout(preview_frame)
+        preview_layout = QVBoxLayout(self.preview_frame)
         
         preview_label = QLabel("主题预览效果")
         preview_label.setStyleSheet("font-size: 14px; font-weight: bold; margin-bottom: 10px;")
         preview_layout.addWidget(preview_label)
         
+        # 添加主题说明
+        theme_desc = QLabel("选择不同主题可以改变程序的整体外观风格。")
+        theme_desc.setStyleSheet("font-size: 12px; color: #666; margin-bottom: 10px;")
+        preview_layout.addWidget(theme_desc)
+        
         # 预览按钮组，展示主题效果
         preview_btn_layout = QHBoxLayout()
         preview_btn_layout.setSpacing(10)
         
-        btn1 = QPushButton("主要按钮")
-        btn1.setStyleSheet("""
+        self.preview_btn1 = QPushButton("主要按钮")
+        self.preview_btn1.setStyleSheet("""
             QPushButton {
                 background-color: #0078d7;
                 color: white;
@@ -667,8 +691,8 @@ class SettingsDialog(QDialog):
             }
         """)
         
-        btn2 = QPushButton("次要按钮")
-        btn2.setStyleSheet("""
+        self.preview_btn2 = QPushButton("次要按钮")
+        self.preview_btn2.setStyleSheet("""
             QPushButton {
                 background-color: #f0f0f0;
                 color: #333;
@@ -678,15 +702,411 @@ class SettingsDialog(QDialog):
             }
         """)
         
-        preview_btn_layout.addWidget(btn1)
-        preview_btn_layout.addWidget(btn2)
+        preview_btn_layout.addWidget(self.preview_btn1)
+        preview_btn_layout.addWidget(self.preview_btn2)
         preview_layout.addLayout(preview_btn_layout)
         
-        theme_layout.addWidget(preview_frame)
+        theme_layout.addWidget(self.preview_frame)
         layout.addWidget(theme_card)
+        
+        # 初始更新预览
+        self.update_theme_preview(self.theme_combo.currentIndex())
+        
+        # 应用主题样式
+        self._apply_theme_styles()
         
         layout.addStretch()
         self.content_stack.addWidget(page)
+    
+    def _apply_theme_styles(self):
+        """
+        应用主题样式到设置对话框的各个组件
+        """
+        if self.is_dark_theme:
+            # 深色主题样式
+            # 导航面板样式
+            self.nav_widget.setStyleSheet("""
+                QWidget { 
+                    background-color: #252526; 
+                    border-right: 1px solid #3e3e42;
+                }
+                QListWidget { 
+                    background-color: transparent; 
+                    border: none;
+                    outline: none;
+                }
+                QListWidget::item { 
+                    padding: 12px 20px;
+                    height: 48px;
+                    font-size: 14px;
+                    border-bottom: 1px solid #3e3e42;
+                    color: #ffffff;
+                }
+                QListWidget::item:selected { 
+                    background-color: #0e639c;
+                    color: #ffffff;
+                    border-left: 3px solid #0e639c;
+                }
+            """)
+            
+            # 标题样式
+            self.title_label.setStyleSheet("font-size: 20px; font-weight: bold; padding: 20px; color: #ffffff;")
+            
+            # 搜索框样式
+            self.search_input.setStyleSheet("""
+                QLineEdit {
+                    border-radius: 4px;
+                    border: 1px solid #3c3c3c;
+                    padding: 8px 12px;
+                    background-color: #3c3c3c;
+                    color: #ffffff;
+                }
+                QLineEdit:focus {
+                    border-color: #0e639c;
+                    outline: none;
+                }
+                QLineEdit::placeholder {
+                    color: #999999;
+                }
+            """)
+            
+            # 内容区域样式
+            self.content_stack.setStyleSheet("""
+                QStackedWidget {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                }
+                QWidget {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                }
+                QLabel {
+                    color: #ffffff;
+                }
+            """)
+        else:
+            # 浅色主题样式（恢复默认样式）
+            self.nav_widget.setStyleSheet("""
+                QWidget { 
+                    background-color: #f8f9fa; 
+                    border-right: 1px solid #e0e0e0;
+                }
+                QListWidget { 
+                    background-color: transparent; 
+                    border: none;
+                    outline: none;
+                }
+                QListWidget::item { 
+                    padding: 12px 20px;
+                    height: 48px;
+                    font-size: 14px;
+                    border-bottom: 1px solid #f0f0f0;
+                }
+                QListWidget::item:selected { 
+                    background-color: #e6f2ff;
+                    color: #0078d7;
+                    border-left: 3px solid #0078d7;
+                }
+            """)
+            
+            # 标题样式
+            self.title_label.setStyleSheet("font-size: 20px; font-weight: bold; padding: 20px;")
+            
+            # 搜索框样式
+            self.search_input.setStyleSheet("""
+                QLineEdit {
+                    border-radius: 4px;
+                    border: 1px solid #ddd;
+                    padding: 8px 12px;
+                    background-color: white;
+                }
+                QLineEdit:focus {
+                    border-color: #0078d7;
+                    outline: none;
+                }
+            """)
+            
+            # 内容区域样式
+            self.content_stack.setStyleSheet("""
+                QStackedWidget {
+                    background-color: #ffffff;
+                    color: #000000;
+                }
+                QWidget {
+                    background-color: #ffffff;
+                    color: #000000;
+                }
+            """)
+        
+        # 更新所有设置页面中的卡片和控件样式
+        self._update_all_cards_styles(self.is_dark_theme)
+    
+    def _update_all_cards_styles(self, is_dark):
+        """
+        更新所有设置页面中卡片和控件的样式
+        """
+        # 为每个页面中的卡片和控件设置样式
+        for i in range(self.content_stack.count()):
+            page = self.content_stack.widget(i)
+            if page:
+                # 首先设置页面背景色
+                if is_dark:
+                    page.setStyleSheet("background-color: #1e1e1e; color: #ffffff;")
+                # 获取页面中的所有卡片和控件
+                for child in page.findChildren(QWidget):
+                    # 处理QLabel
+                    if isinstance(child, QLabel):
+                        # 跳过预览区域的标签
+                        if hasattr(self, 'preview_frame') and child.isAncestorOf(self.preview_frame):
+                            continue
+                        # 设置标签颜色
+                        if is_dark:
+                            # 检查是否有特殊样式，如果没有则设置默认深色模式样式
+                            current_style = child.styleSheet()
+                            if not current_style or "color:" not in current_style:
+                                child.setStyleSheet(current_style + "color: #ffffff;")
+                            # 更新标题样式
+                            if "font-size: 24px" in current_style:
+                                child.setStyleSheet(current_style.replace("color: #333;", "color: #ffffff;"))
+                    
+                    # 处理QPushButton（跳过预览按钮）
+                    elif isinstance(child, QPushButton):
+                        # 跳过预览区域的所有按钮
+                        if hasattr(self, 'preview_frame') and child.isAncestorOf(self.preview_frame):
+                            continue
+                        # 跳过特定预览按钮
+                        if hasattr(self, 'preview_btn1') and (child == self.preview_btn1 or child == self.preview_btn2):
+                            continue
+                        if is_dark:
+                            # 获取当前样式
+                            current_style = child.styleSheet()
+                            # 检查是否为特殊颜色按钮（红色、蓝色等），保留其特殊颜色
+                            if "ff4757" not in current_style and "0078d7" not in current_style and "17a2b8" not in current_style and "dc3545" not in current_style and "007bff" not in current_style and "28a745" not in current_style and "ffc107" not in current_style:
+                                # 如果没有特定样式，则应用默认的深色模式按钮样式
+                                if not current_style or "background-color" not in current_style:
+                                    child.setStyleSheet("""
+                                        QPushButton {
+                                            background-color: #2d2d30;
+                                            color: #ffffff;
+                                            border: 1px solid #3c3c3c;
+                                            border-radius: 4px;
+                                            padding: 6px 12px;
+                                        }
+                                        QPushButton:hover {
+                                            background-color: #3e3e42;
+                                        }
+                                    """)
+                                else:
+                                    # 更新已有样式中的颜色值
+                                    updated_style = current_style
+                                    # 更新白色背景
+                                    updated_style = updated_style.replace("background-color: white;", "background-color: #2d2d30;")
+                                    updated_style = updated_style.replace("background-color: #f8f9fa;", "background-color: #2d2d30;")
+                                    updated_style = updated_style.replace("background-color: #f0f0f0;", "background-color: #3e3e42;")
+                                    updated_style = updated_style.replace("background-color: #f8f8f8;", "background-color: #3c3c3c;")
+                                    # 更新文字颜色
+                                    updated_style = updated_style.replace("color: white;", "color: #ffffff;")
+                                    updated_style = updated_style.replace("color: #333;", "color: #ffffff;")
+                                    updated_style = updated_style.replace("color: #222;", "color: #cccccc;")
+                                    # 更新边框颜色
+                                    updated_style = updated_style.replace("border: 1px solid #ddd;", "border: 1px solid #3c3c3c;")
+                                    child.setStyleSheet(updated_style)
+                    
+                    # 处理卡片QWidget
+                    elif isinstance(child, QWidget) and "background-color" in child.styleSheet():
+                        if is_dark:
+                            # 为卡片设置深色背景
+                            current_style = child.styleSheet()
+                            # 更新卡片背景颜色
+                            updated_style = current_style
+                            updated_style = updated_style.replace("background-color: #f8f9fa;", "background-color: #2d2d30;")
+                            updated_style = updated_style.replace("background-color: #f5f5f5;", "background-color: #2d2d30;")
+                            updated_style = updated_style.replace("background-color: #fafafa;", "background-color: #2d2d30;")
+                            updated_style = updated_style.replace("background-color: white;", "background-color: #2d2d30;")
+                            # 更新边框颜色
+                            updated_style = updated_style.replace("border: 1px solid #e9ecef;", "border: 1px solid #3c3c3c;")
+                            updated_style = updated_style.replace("border: 1px solid #ddd;", "border: 1px solid #3c3c3c;")
+                            updated_style = updated_style.replace("border: 1px solid #eee;", "border: 1px solid #3c3c3c;")
+                            # 添加文字颜色
+                            if "color:" not in updated_style:
+                                updated_style += "color: #ffffff;"
+                            child.setStyleSheet(updated_style)
+                    
+                    # 处理其他输入控件
+                    elif isinstance(child, (QLineEdit, QSpinBox, QComboBox, QCheckBox)):
+                        if is_dark:
+                            if isinstance(child, QLineEdit):
+                                # 检查是否为只读文本框（如程序信息）
+                                if child.isReadOnly():
+                                    child.setStyleSheet("""
+                                            QLineEdit {
+                                                background-color: #2d2d30;
+                                                border: 1px solid #3c3c3c;
+                                                border-radius: 4px;
+                                                padding: 6px 10px;
+                                                color: #ffffff;
+                                            }
+                                        """)
+                                else:
+                                    child.setStyleSheet("""
+                                        QLineEdit {
+                                            border: 1px solid #3c3c3c;
+                                            border-radius: 4px;
+                                            padding: 6px;
+                                            background-color: #3c3c3c;
+                                            color: #ffffff;
+                                        }
+                                    """)
+                            elif isinstance(child, QSpinBox):
+                                child.setStyleSheet("""
+                                    QSpinBox {
+                                        border: 1px solid #3c3c3c;
+                                        border-radius: 4px;
+                                        padding: 5px 10px;
+                                        background-color: #3c3c3c;
+                                        color: #ffffff;
+                                        font-size: 14px;
+                                        font-weight: bold;
+                                        min-width: 150px;
+                                        min-height: 32px;
+                                        text-align: center;
+                                    }
+                                """)
+                            elif isinstance(child, QComboBox):
+                                child.setStyleSheet("""
+                                    QComboBox {
+                                        border: 1px solid #3c3c3c;
+                                        border-radius: 4px;
+                                        padding: 6px;
+                                        background-color: #3c3c3c;
+                                        color: #ffffff;
+                                    }
+                                    QComboBox::drop-down {
+                                        subcontrol-origin: padding;
+                                        subcontrol-position: top right;
+                                        width: 25px;
+                                        border-left-width: 1px;
+                                        border-left-color: #3c3c3c;
+                                        border-left-style: solid;
+                                        border-top-right-radius: 4px;
+                                        border-bottom-right-radius: 4px;
+                                    }
+                                    QComboBox QAbstractItemView {
+                                        background-color: #2d2d30;
+                                        color: #ffffff;
+                                        border: 1px solid #3c3c3c;
+                                    }
+                                """)
+                            elif isinstance(child, QCheckBox):
+                                child.setStyleSheet("color: #ffffff;")
+        
+        # 确保预览区域标签颜色正确
+        if hasattr(self, 'preview_frame'):
+            for label in self.preview_frame.findChildren(QLabel):
+                if is_dark:
+                    label.setStyleSheet(label.styleSheet() + "color: #ffffff;")
+                else:
+                    # 移除可能添加的颜色样式，保持原有预览样式
+                    pass
+    
+    def update_theme_preview(self, theme_index):
+        """更新主题预览效果"""
+        if theme_index == 0:  # 默认主题
+            self.preview_frame.setStyleSheet("""
+                QWidget {
+                    background-color: #f5f5f5;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    margin-top: 15px;
+                    padding: 15px;
+                }
+            """)
+            self.preview_btn1.setStyleSheet("""
+                QPushButton {
+                    background-color: #0078d7;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                }
+            """)
+            self.preview_btn2.setStyleSheet("""
+                QPushButton {
+                    background-color: #f0f0f0;
+                    color: #333;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                }
+            """)
+        elif theme_index == 1:  # 浅色主题
+            self.preview_frame.setStyleSheet("""
+                QWidget {
+                    background-color: #fafafa;
+                    border: 1px solid #eee;
+                    border-radius: 6px;
+                    margin-top: 15px;
+                    padding: 15px;
+                }
+            """)
+            self.preview_btn1.setStyleSheet("""
+                QPushButton {
+                    background-color: #4a90e2;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: 500;
+                }
+            """)
+            self.preview_btn2.setStyleSheet("""
+                QPushButton {
+                    background-color: #f8f8f8;
+                    color: #222;
+                    border: 1px solid #ddd;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: 500;
+                }
+            """)
+        elif theme_index == 2:  # 深色主题
+            self.preview_frame.setStyleSheet("""
+                QWidget {
+                    background-color: #252526;
+                    border: 1px solid #3e3e42;
+                    border-radius: 4px;
+                    margin-top: 15px;
+                    padding: 15px;
+                }
+            """)
+            self.preview_btn1.setStyleSheet("""
+                QPushButton {
+                    background-color: #0e639c;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                }
+            """)
+            self.preview_btn2.setStyleSheet("""
+                QPushButton {
+                    background-color: #2d2d30;
+                    color: #cccccc;
+                    border: 1px solid #3c3c3c;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                }
+            """)
+        
+        # 更新预览区域标签颜色
+        for label in self.preview_frame.findChildren(QLabel):
+            if theme_index == 2:
+                label.setStyleSheet(label.styleSheet() + "color: #ffffff;")
+            else:
+                # 移除深色模式添加的颜色样式
+                current_style = label.styleSheet()
+                if "color: #ffffff;" in current_style:
+                    label.setStyleSheet(current_style.replace("color: #ffffff;", ""))
     
     def init_notification_settings_page(self):
         """初始化通知设置页面"""
@@ -1414,6 +1834,9 @@ class MainWindow(QMainWindow):
         # 初始化自动备份定时器
         self.setup_auto_backup_timer()
 
+        # 应用主题
+        self.apply_theme()
+        
         # 默认隐藏窗口（后台运行）
         self.hide()
         self.show_system_tray_message("程序已启动", "使用 Ctrl+Alt+T 呼出窗口")
@@ -1572,6 +1995,10 @@ class MainWindow(QMainWindow):
         
         # 创建统计界面标签页
         self.statistics_widget = StatisticsWidget(self.task_handler)
+        # 应用当前主题 - 在初始化时默认为浅色主题
+        if hasattr(self.statistics_widget, 'set_dark_theme'):
+            # 假设默认是浅色主题
+            self.statistics_widget.set_dark_theme(False)
         
         # 添加标签页
         self.tab_widget.addTab(task_list_widget, "任务列表")
@@ -2643,6 +3070,9 @@ class MainWindow(QMainWindow):
             
             # 重新设置自动备份定时器
             self.setup_auto_backup_timer()
+            
+            # 应用新的主题
+            self.apply_theme()
         else:
             print("[MainWindow] 配置保存失败")
             QMessageBox.critical(self, "保存失败", "无法保存配置设置。请检查文件权限。")
@@ -2676,6 +3106,271 @@ class MainWindow(QMainWindow):
         else:
             print(f"[{time.strftime('%H:%M:%S')}] 自动备份已禁用")
 
+    def apply_theme(self):
+        """应用当前配置的主题"""
+        theme_index = self.config.get("theme", 0)
+        
+        # 定义不同主题的样式表
+        if theme_index == 0:  # 默认主题
+            style_sheet = """
+                QMainWindow, QWidget {
+                    background-color: #f5f5f5;
+                    color: #333;
+                }
+                QGroupBox {
+                    background-color: white;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    margin: 5px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    padding: 0 5px;
+                }
+                QPushButton {
+                    background-color: #0078d7;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 6px 12px;
+                    font-weight: 600;
+                    min-height: 30px;
+                }
+                QPushButton:hover {
+                    background-color: #005a9e;
+                    color: #ffffff;
+                    font-weight: bold;
+                }
+                QLineEdit, QComboBox, QDateTimeEdit, QSpinBox {
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    padding: 5px;
+                    background-color: white;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #ddd;
+                    background-color: white;
+                }
+                QTabBar::tab {
+                    padding: 6px 12px;
+                    background-color: #f0f0f0;
+                    border: 1px solid #ddd;
+                    border-bottom: none;
+                }
+                QTabBar::tab:selected {
+                    background-color: white;
+                    border-bottom: 1px solid white;
+                }
+            """
+        elif theme_index == 1:  # 浅色主题
+            style_sheet = """
+                QMainWindow, QWidget {
+                    background-color: #ffffff;
+                    color: #333333;
+                }
+                QMenuBar {
+                    background-color: #f5f5f5;
+                    color: #333333;
+                    padding: 4px 2px;
+                    border: 1px solid transparent;
+                }
+                QMenuBar::item {
+                    padding: 4px 8px;
+                    background-color: transparent;
+                }
+                QMenuBar::item:hover {
+                    background-color: #357abd;
+                    color: #ffffff;
+                }
+                QMenuBar::item:selected {
+                    background-color: #357abd;
+                    color: #ffffff;
+                }
+                QMenuBar::item:!hover:!selected {
+                    background-color: transparent;
+                    color: #333333;
+                }
+                QMenuBar::item:focus {
+                    outline: none;
+                }
+                QMenu {
+                    background-color: white;
+                    border: 1px solid #ddd;
+                    color: #333333;
+                }
+                QMenu::item {
+                    padding: 6px 24px;
+                }
+                QMenu::item:hover {
+                    background-color: #357abd;
+                    color: #ffffff;
+                }
+                QGroupBox {
+                    background-color: #fafafa;
+                    border: 1px solid #eee;
+                    border-radius: 6px;
+                    margin: 5px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    padding: 0 5px;
+                    color: #333;
+                }
+                QPushButton {
+                    background-color: #4a90e2;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: 600;
+                    min-height: 32px;
+                }
+                QPushButton:hover {
+                    background-color: #357abd;
+                    color: #ffffff;
+                    font-weight: bold;
+                }
+                QLineEdit, QComboBox, QDateTimeEdit, QSpinBox {
+                    border: 1px solid #ddd;
+                    border-radius: 6px;
+                    padding: 6px;
+                    background-color: white;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #eee;
+                    background-color: #fafafa;
+                }
+                QTabBar::tab {
+                    padding: 8px 16px;
+                    background-color: #f8f8f8;
+                    border: 1px solid #eee;
+                    border-bottom: none;
+                }
+                QTabBar::tab:selected {
+                    background-color: #fafafa;
+                    border-bottom: 1px solid #fafafa;
+                }
+            """
+        elif theme_index == 2:  # 深色主题
+            style_sheet = """
+                QMainWindow, QWidget {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                }
+                QMenuBar {
+                    background-color: #252526;
+                    color: #ffffff;
+                    padding: 4px 2px;
+                    border: 1px solid transparent;
+                }
+                QMenuBar::item {
+                    padding: 4px 8px;
+                    background-color: transparent;
+                }
+                QMenuBar::item:hover {
+                    background-color: #0e639c;
+                    color: #ffffff;
+                }
+                QMenuBar::item:selected {
+                    background-color: #0e639c;
+                    color: #ffffff;
+                }
+                QMenuBar::item:!hover:!selected {
+                    background-color: transparent;
+                    color: #ffffff;
+                }
+                QMenuBar::item:focus {
+                    outline: none;
+                }
+                QMenu {
+                    background-color: #252526;
+                    border: 1px solid #3e3e42;
+                    color: #ffffff;
+                }
+                QMenu::item {
+                    padding: 6px 24px;
+                }
+                QMenu::item:hover {
+                    background-color: #0e639c;
+                    color: #ffffff;
+                }
+                QGroupBox {
+                    background-color: #252526;
+                    border: 1px solid #3e3e42;
+                    border-radius: 4px;
+                    margin: 5px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    padding: 0 5px;
+                    color: #ffffff;
+                }
+                QPushButton {
+                    background-color: #0e639c;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 6px 12px;
+                    font-weight: 600;
+                    min-height: 30px;
+                }
+                QPushButton:hover {
+                    background-color: #1177bb;
+                    color: #ffffff;
+                    font-weight: bold;
+                }
+                QLineEdit, QComboBox, QDateTimeEdit, QSpinBox {
+                    border: 1px solid #3c3c3c;
+                    border-radius: 4px;
+                    padding: 5px;
+                    background-color: #3c3c3c;
+                    color: #ffffff;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #3e3e42;
+                    background-color: #252526;
+                }
+                QTabBar::tab {
+                    padding: 6px 12px;
+                    background-color: #2d2d30;
+                    border: 1px solid #3e3e42;
+                    border-bottom: none;
+                    color: #ffffff;
+                }
+                QTabBar::tab:selected {
+                    background-color: #252526;
+                    border-bottom: 1px solid #252526;
+                }
+            """
+        
+        # 应用样式表
+        self.setStyleSheet(style_sheet)
+        
+        # 根据主题设置任务列表的darkTheme属性
+        is_dark_theme = (theme_index == 2)
+        
+        # 为所有任务列表设置darkTheme属性
+        for task_type in ['todo_list', 'overdue_list', 'done_list']:
+            task_list = getattr(self, task_type, None)
+            if task_list:
+                # 优先使用set_dark_theme方法
+                if hasattr(task_list, 'set_dark_theme'):
+                    task_list.set_dark_theme(is_dark_theme)
+                elif hasattr(task_list, 'list_widget'):
+                    # 兼容旧版本
+                    task_list.list_widget.setProperty('darkTheme', 'true' if is_dark_theme else 'false')
+                    # 重新设置样式表以应用属性变化
+                    task_list.list_widget.style().unpolish(task_list.list_widget)
+                    task_list.list_widget.style().polish(task_list.list_widget)
+            
+            # 设置统计窗口的主题
+            if hasattr(self, 'statistics_widget') and self.statistics_widget:
+                if hasattr(self.statistics_widget, 'set_dark_theme'):
+                    self.statistics_widget.set_dark_theme(is_dark_theme)
+    
     def exit_app(self):
         """退出应用"""
         self.timer.stop()  # 停止定时器

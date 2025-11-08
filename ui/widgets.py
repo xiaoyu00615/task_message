@@ -186,27 +186,8 @@ class TaskItemWidget(QWidget):
                 done_label.setFont(done_font)
                 # 已完成任务的日期标签已有特殊颜色，不需要额外设置
                 
-                # 检查是否为超时完成
-                is_overdue_completion = False
-                if self.deadline and self.deadline != "无截止日期" and display_time:
-                    try:
-                        # 解析完成时间和截止时间
-                        done_dt = datetime.strptime(display_time, "%Y-%m-%d %H:%M:%S")
-                        # 尝试多种格式解析截止日期
-                        deadline_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
-                        deadline_dt = None
-                        for fmt in deadline_formats:
-                            try:
-                                deadline_dt = datetime.strptime(self.deadline, fmt)
-                                break
-                            except ValueError:
-                                continue
-                        # 如果都成功解析且完成时间晚于截止日期，则为超时完成
-                        if deadline_dt and done_dt > deadline_dt:
-                            is_overdue_completion = True
-                    except:
-                        # 解析失败时默认为正常完成
-                        pass
+                # 使用统一的方法检查是否为超时完成
+                is_overdue_completion = self._is_overdue_completion(display_time)
                 
                 # 根据是否超时完成设置不同颜色
                 if is_overdue_completion:
@@ -237,13 +218,32 @@ class TaskItemWidget(QWidget):
                 deadline_font = QFont()
                 deadline_font.setPointSize(10)
                 deadline_label.setFont(deadline_font)
+                
+                # 对于已完成任务，根据任务完成状态设置截止日期标签的颜色
+                if self.is_done:
+                    # 使用统一的方法检查是否为超时完成
+                    display_done_time = self.done_time if self.done_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    is_overdue_completion = self._is_overdue_completion(display_done_time)
+                    
+                    # 根据是否超时完成设置不同颜色
+                    if is_overdue_completion:
+                        deadline_label.setStyleSheet("color: rgb(220, 50, 50);")  # 超时完成的截止日期显示红色
+                    else:
+                        deadline_label.setStyleSheet("color: rgb(100, 180, 100);")  # 正常完成的截止日期显示绿色
+                else:
+                    # 非已完成任务使用正常文本颜色
+                    if hasattr(self, 'is_dark_theme') and self.is_dark_theme:
+                        deadline_label.setStyleSheet("color: #ffffff;")
+                    else:
+                        deadline_label.setStyleSheet("color: #333333;")
+                
                 deadline_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
                 content_layout.addWidget(deadline_label)
         
         # 类别和标签信息（如果有）
         for i in range(3, len(lines) - 1):  # 跳过最后一行（倒计时信息）
-            # 跳过包含截止日期的行，避免重复显示
-            if any(keyword in lines[i] for keyword in ["截止日期", "截止"]):
+            # 跳过包含截止日期和完成日期的行，避免重复显示
+            if any(keyword in lines[i] for keyword in ["截止日期", "截止", "完成日期"]):
                 continue
             meta_label = QLabel(lines[i])
             meta_font = QFont()
@@ -314,45 +314,11 @@ class TaskItemWidget(QWidget):
             # 简单的调试输出
             print(f"调试 - 任务: {lines[0]}, 完成时间: {display_done_time}, 截止日期: {self.deadline}")
             
-            # 判断是否超时完成
-            if display_done_time and self.deadline and self.deadline != "无截止日期":
-                # 先尝试直接字符串比较（最可靠）
-                try:
-                    # 提取日期部分进行比较
-                    done_date_str = display_done_time[:10]  # 提取 YYYY-MM-DD 部分
-                    deadline_date_str = self.deadline[:10]  # 提取 YYYY-MM-DD 部分
-                    
-                    print(f"调试 - 比较日期: {done_date_str} vs {deadline_date_str}")
-                    
-                    # 直接字符串比较（YYYY-MM-DD格式可以直接比较）
-                    if done_date_str > deadline_date_str:
-                        is_overdue_completion = True
-                        print("调试 - 判断为超时完成")
-                    else:
-                        print("调试 - 判断为正常完成")
-                except:
-                    # 字符串比较失败时，尝试使用datetime解析
-                    try:
-                        # 解析完成时间
-                        if ' ' in display_done_time:
-                            done_dt = datetime.strptime(display_done_time, "%Y-%m-%d %H:%M:%S")
-                        else:
-                            done_dt = datetime.strptime(display_done_time, "%Y-%m-%d")
-                        
-                        # 解析截止日期
-                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                            try:
-                                deadline_dt = datetime.strptime(self.deadline, fmt)
-                                if done_dt > deadline_dt:
-                                    is_overdue_completion = True
-                                break
-                            except:
-                                continue
-                    except:
-                        pass
+            # 使用统一的方法判断是否超时完成
+            is_overdue_completion = self._is_overdue_completion(display_done_time)
             
             # 强制设置标签文本和颜色
-            label_text = "[超时完成]" if is_overdue_completion else "[已完成]"
+            label_text = f"【超时完成】" if is_overdue_completion else f"【已完成】"
             label_color = "color: rgb(220, 50, 50);" if is_overdue_completion else "color: rgb(100, 180, 100);"
             
             print(f"调试 - 最终标签: {label_text}, 颜色: {label_color}")
@@ -372,9 +338,6 @@ class TaskItemWidget(QWidget):
         main_layout.addLayout(content_layout)
         main_layout.addStretch(1)
         
-        # 为所有子控件安装事件过滤器，确保点击任何区域都能选中任务项
-        self._install_event_filters_on_children()
-
         # 已完成任务添加删除线（不改变颜色）
         if self.is_done:
             for i in range(content_layout.count()):
@@ -383,6 +346,60 @@ class TaskItemWidget(QWidget):
                     font = widget.font()
                     font.setStrikeOut(True)
                     widget.setFont(font)
+        
+        # 为所有子控件安装事件过滤器，确保点击任何区域都能选中任务项
+        self._install_event_filters_on_children()
+        
+    def _is_overdue_completion(self, done_time_str):
+        """检查任务是否为超时完成
+        
+        Args:
+            done_time_str: 完成时间字符串
+            
+        Returns:
+            bool: True 表示超时完成，False 表示正常完成
+        """
+        if not done_time_str or not self.deadline or self.deadline == "无截止日期":
+            return False
+            
+        try:
+            # 先尝试直接字符串比较（最可靠）
+            # 提取日期部分进行比较
+            done_date_str = done_time_str[:10]  # 提取 YYYY-MM-DD 部分
+            deadline_date_str = self.deadline[:10]  # 提取 YYYY-MM-DD 部分
+            
+            print(f"调试 - 比较日期: {done_date_str} vs {deadline_date_str}")
+            
+            # 直接字符串比较（YYYY-MM-DD格式可以直接比较）
+            if done_date_str > deadline_date_str:
+                print("调试 - 判断为超时完成")
+                return True
+            elif done_date_str == deadline_date_str:
+                # 日期相同时，尝试时间比较
+                try:
+                    # 解析完成时间
+                    if ' ' in done_time_str:
+                        done_dt = datetime.strptime(done_time_str, "%Y-%m-%d %H:%M:%S")
+                    else:
+                        done_dt = datetime.strptime(done_time_str, "%Y-%m-%d")
+                    
+                    # 解析截止日期
+                    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
+                        try:
+                            deadline_dt = datetime.strptime(self.deadline, fmt)
+                            if done_dt > deadline_dt:
+                                print("调试 - 判断为超时完成（时间比较）")
+                                return True
+                            break
+                        except:
+                            continue
+                except:
+                    pass
+            print("调试 - 判断为正常完成")
+            return False
+        except:
+            # 所有比较方法都失败时，默认为正常完成
+            return False
     
     def enterEvent(self, event):
         """鼠标进入事件处理，实现鼠标经过效果"""
@@ -1077,7 +1094,7 @@ class TaskListWidget(QWidget):
         # 更新所有标签的颜色
         for label in task_widget.findChildren(QLabel):
             # 跳过特殊颜色的标签（如完成日期、倒计时等）
-            if any(keyword in label.text() for keyword in ["已完成", "剩余时间", "截止时间"]):
+            if any(keyword in label.text() for keyword in ["已完成", "超时完成", "剩余时间", "截止时间", "完成日期"]):
                 continue
             if self.is_dark_theme:
                 label.setStyleSheet("color: #ffffff;")

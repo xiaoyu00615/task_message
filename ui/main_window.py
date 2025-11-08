@@ -3486,10 +3486,11 @@ class MainWindow(QMainWindow):
         """键盘按下事件处理，捕获快捷键"""
         # 处理Ctrl+Alt+T快捷键用于切换窗口显示状态
         if event.key() == Qt.Key_T and event.modifiers() == (Qt.ControlModifier | Qt.AltModifier):
-            if self.isHidden() or not self.isVisible():
-                self.show_window()
-            else:
-                self.hide_window()
+            # 使用toggle_window_visibility统一处理显示/隐藏逻辑
+            self.toggle_window_visibility()
+            # 阻止事件继续传播，防止全局热键也被触发
+            event.accept()
+            return
         # 处理Alt+Q快捷键用于强制关闭程序
         elif event.key() == Qt.Key_Q and event.modifiers() == Qt.AltModifier:
             # 确认是否要退出程序
@@ -3502,6 +3503,8 @@ class MainWindow(QMainWindow):
             )
             if reply == QMessageBox.Yes:
                 self.exit_app()
+            event.accept()
+            return
         else:
             super().keyPressEvent(event)
     

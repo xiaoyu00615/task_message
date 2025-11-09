@@ -225,17 +225,30 @@ class TaskHandler:
                 time_remaining = deadline_datetime - now
                 days_remaining = time_remaining.total_seconds() / (24 * 3600)  # 转换为天
 
-                # 根据剩余天数自动调整紧急度（1最紧急）
-                if days_remaining > 7:
-                    target_urgency = 5  # 7天以上：最不紧急
-                elif days_remaining > 3:
-                    target_urgency = 4  # 4-7天：较不紧急
-                elif days_remaining > 1:
-                    target_urgency = 3  # 2-3天：中等
-                elif days_remaining > 0:
-                    target_urgency = 2  # 1天内：紧急
+                # 计算剩余小时数
+                hours_remaining = time_remaining.total_seconds() / 3600
+                
+                # 根据剩余时间自动调整紧急度（1最紧急，10最不紧急）
+                if hours_remaining <= 0:
+                    target_urgency = 1  # 超时未处理
+                elif hours_remaining <= 2:
+                    target_urgency = 2  # 极度紧急：0-2小时内完成
+                elif hours_remaining <= 8:
+                    target_urgency = 3  # 极高紧急：2-8小时内完成
+                elif hours_remaining <= 24:
+                    target_urgency = 4  # 高紧急：8-24小时内完成
+                elif hours_remaining <= 48:
+                    target_urgency = 5  # 较紧急：2天内完成
+                elif hours_remaining <= 120:
+                    target_urgency = 6  # 中紧急：3-5天内完成
+                elif hours_remaining <= 168:
+                    target_urgency = 7  # 常规紧急：1周内完成
+                elif hours_remaining <= 336:
+                    target_urgency = 8  # 低紧急：2-3周内完成
+                elif hours_remaining <= 1008:
+                    target_urgency = 9  # 极低紧急：1个月内完成
                 else:
-                    target_urgency = 1  # 已过期或今天：最紧急
+                    target_urgency = 10  # 长期规划：1个月以上
 
                 # 根据剩余时间正确更新紧急度，无论提升还是降低
                 if target_urgency != task["urgency"]:

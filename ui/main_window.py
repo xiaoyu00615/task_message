@@ -1170,6 +1170,30 @@ class SettingsDialog(QDialog):
         self.preview_notification_check.setStyleSheet("font-size: 14px;")
         checkboxes_layout.addWidget(self.preview_notification_check)
         
+        # 添加通知冷却时间设置
+        cooldown_layout = QHBoxLayout()
+        cooldown_layout.setContentsMargins(0, 0, 0, 0)
+        cooldown_label = QLabel("相同通知冷却时间（分钟）：")
+        cooldown_label.setStyleSheet("font-size: 14px;")
+        cooldown_layout.addWidget(cooldown_label)
+        
+        self.cooldown_spin = QSpinBox()
+        self.cooldown_spin.setRange(1, 60)
+        self.cooldown_spin.setValue(self.config.get("notification_cooldown", 5))
+        self.cooldown_spin.setStyleSheet("font-size: 14px;")
+        self.cooldown_spin.setFixedWidth(80)
+        cooldown_layout.addWidget(self.cooldown_spin)
+        
+        # 添加分钟标签
+        minutes_label = QLabel("分钟")
+        minutes_label.setStyleSheet("font-size: 14px;")
+        cooldown_layout.addWidget(minutes_label)
+        
+        # 右侧添加空白伸展空间，保持布局美观
+        cooldown_layout.addStretch()
+        
+        checkboxes_layout.addLayout(cooldown_layout)
+        
         notify_layout.addLayout(checkboxes_layout)
         
         # 通知行为说明
@@ -1641,6 +1665,7 @@ class SettingsDialog(QDialog):
         self.config["deadline_notifications"] = self.deadline_notify_check.isChecked()
         self.config["overdue_notifications"] = self.overdue_notify_check.isChecked()
         self.config["notification_preview"] = self.preview_notification_check.isChecked()
+        self.config["notification_cooldown"] = self.cooldown_spin.value()
         
         # 保存更新设置
         self.config["update_interval"] = self.update_interval_spin.value()
@@ -1834,6 +1859,9 @@ class MainWindow(QMainWindow):
         # 初始化自动备份定时器
         self.setup_auto_backup_timer()
 
+        # 初始化通知冷却时间记录
+        self.last_notification_time = {}
+
         # 应用主题
         self.apply_theme()
         
@@ -1938,6 +1966,7 @@ class MainWindow(QMainWindow):
     def init_hotkey_listener(self):
         """初始化快捷键监听"""
         self.hotkey_thread = HotkeyListener()
+        # 全局热键连接到toggle_window_visibility
         self.hotkey_thread.trigger.connect(self.toggle_window_visibility)
         # 启动线程（守护线程，主程序退出时自动结束）
         self.hotkey_thread.daemon = True
@@ -2091,14 +2120,19 @@ class MainWindow(QMainWindow):
         
         layout.addRow("选择标签:", self.tags_input)
 
-        # 紧急度（1-5级）- 优化显示
+        # 紧急度（1-10级）- 优化显示
         self.urgency_input = QComboBox()
         self.urgency_input.addItems([
-            "1-最紧急",
-            "2-紧急",
-            "3-中等",
-            "4-较不紧急",
-            "5-最不紧急"
+            "1-超时未处理",
+            "2-极度紧急",
+            "3-极高紧急",
+            "4-高紧急",
+            "5-较紧急",
+            "6-中紧急",
+            "7-常规紧急",
+            "8-低紧急",
+            "9-极低紧急",
+            "10-长期规划"
         ])
         self.urgency_input.setMinimumContentsLength(8)
         self.urgency_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -2229,11 +2263,16 @@ class MainWindow(QMainWindow):
         self.urgency_filter = QComboBox()
         self.urgency_filter.addItem("所有紧急度")
         self.urgency_filter.addItems([
-            "1-最紧急",
-            "2-紧急",
-            "3-中等",
-            "4-较不紧急",
-            "5-最不紧急"
+            "1-超时未处理",
+            "2-极度紧急",
+            "3-极高紧急",
+            "4-高紧急",
+            "5-较紧急",
+            "6-中紧急",
+            "7-常规紧急",
+            "8-低紧急",
+            "9-极低紧急",
+            "10-长期规划"
         ])
         self.urgency_filter.setMinimumHeight(36)  # 显著增大高度
         self.urgency_filter.setMinimumWidth(180)  # 增大宽度
@@ -2351,8 +2390,8 @@ class MainWindow(QMainWindow):
         try:
             selected_text = self.urgency_input.currentText().strip()
             urgency = int(selected_text.split("-")[0])
-            if urgency < 1 or urgency > 5:
-                raise ValueError("紧急度必须在1-5之间")
+            if urgency < 1 or urgency > 10:
+                raise ValueError("紧急度必须在1-10之间")
         except (ValueError, IndexError) as e:
             QMessageBox.warning(self, "输入错误", f"请选择有效的紧急度：{str(e)}")
             return
@@ -2373,17 +2412,30 @@ class MainWindow(QMainWindow):
             time_diff = deadline_dt - now
             days_remaining = time_diff.total_seconds() / (24 * 3600)
             
-            # 根据剩余天数计算正确的紧急度
-            if days_remaining <= 0:
-                proper_urgency = 1
-            elif days_remaining <= 1:
-                proper_urgency = 2
-            elif days_remaining <= 3:
-                proper_urgency = 3
-            elif days_remaining <= 7:
-                proper_urgency = 4
+            # 转换为剩余小时数以便更精确计算
+            hours_remaining = time_diff.total_seconds() / 3600
+            
+            # 根据剩余小时数计算正确的紧急度（10档）
+            if hours_remaining <= 0:
+                proper_urgency = 1  # 超时未处理
+            elif hours_remaining <= 2:
+                proper_urgency = 2  # 极度紧急
+            elif hours_remaining <= 8:
+                proper_urgency = 3  # 极高紧急
+            elif hours_remaining <= 24:
+                proper_urgency = 4  # 高紧急
+            elif hours_remaining <= 48:
+                proper_urgency = 5  # 较紧急
+            elif hours_remaining <= 120:
+                proper_urgency = 6  # 中紧急
+            elif hours_remaining <= 168:
+                proper_urgency = 7  # 常规紧急
+            elif hours_remaining <= 336:
+                proper_urgency = 8  # 低紧急
+            elif hours_remaining <= 1008:
+                proper_urgency = 9  # 极低紧急
             else:
-                proper_urgency = 5
+                proper_urgency = 10  # 长期规划
         
         # 添加任务
         self.task_handler.add_task({
@@ -2864,13 +2916,36 @@ class MainWindow(QMainWindow):
     # 系统托盘相关方法
     def show_system_tray_message(self, title, message):
         """显示托盘消息（根据配置决定是否显示）"""
-        if self.config["show_notifications"]:
-            self.tray_icon.showMessage(
-                title,
-                message,
-                QSystemTrayIcon.Information,
-                2000  # 显示2秒
-            )
+        if not self.config["show_notifications"]:
+            return
+            
+        # 生成通知唯一标识（基于标题和消息内容）
+        notification_id = f"{title}:{message}"
+        
+        # 获取当前时间
+        current_time = time.time()
+        
+        # 获取冷却时间（分钟转换为秒）
+        cooldown_minutes = self.config.get("notification_cooldown", 5)
+        cooldown_seconds = cooldown_minutes * 60
+        
+        # 检查是否在冷却期内
+        if notification_id in self.last_notification_time:
+            last_time = self.last_notification_time[notification_id]
+            if current_time - last_time < cooldown_seconds:
+                # 在冷却期内，不显示通知
+                return
+        
+        # 显示通知
+        self.tray_icon.showMessage(
+            title,
+            message,
+            QSystemTrayIcon.Information,
+            2000  # 显示2秒
+        )
+        
+        # 更新最后显示时间
+        self.last_notification_time[notification_id] = current_time
 
     def on_tray_activated(self, reason):
         """托盘图标被点击时"""
@@ -3484,15 +3559,10 @@ class MainWindow(QMainWindow):
 
     def keyPressEvent(self, event):
         """键盘按下事件处理，捕获快捷键"""
-        # 处理Ctrl+Alt+T快捷键用于切换窗口显示状态
-        if event.key() == Qt.Key_T and event.modifiers() == (Qt.ControlModifier | Qt.AltModifier):
-            # 使用toggle_window_visibility统一处理显示/隐藏逻辑
-            self.toggle_window_visibility()
-            # 阻止事件继续传播，防止全局热键也被触发
-            event.accept()
-            return
+        # 移除窗口内部的Ctrl+Alt+T快捷键处理，由全局热键监听器统一处理
+        # 这样可以确保无论窗口是否聚焦，快捷键都能正常工作
         # 处理Alt+Q快捷键用于强制关闭程序
-        elif event.key() == Qt.Key_Q and event.modifiers() == Qt.AltModifier:
+        if event.key() == Qt.Key_Q and event.modifiers() == Qt.AltModifier:
             # 确认是否要退出程序
             reply = QMessageBox.question(
                 self,

@@ -551,51 +551,66 @@ class TaskItemWidget(QWidget):
         
     def get_urgency_bg_color(self):
         """根据紧急度获取进度条背景颜色"""
-        # 使用与左侧色块类似但稍浅的颜色作为背景
+        # 使用稍浅的颜色作为背景
         urgency_colors = {
-            1: "#ffe0e0",  # 最紧急-浅红色
-            2: "#fff0e0",  # 紧急-浅橙色
-            3: "#ffffe0",  # 中等-浅黄色
-            4: "#e0ffe0",  # 较不紧急-浅绿色
-            5: "#e0f0ff"   # 最不紧急-浅蓝色
+            1: "#FFEBEE",  # 超时未处理-浅红色背景
+            2: "#FFEBEE",  # 极度紧急-浅红色背景
+            3: "#FFF3E0",  # 极高紧急-浅橙色背景
+            4: "#FFFDE7",  # 高紧急-浅黄色背景
+            5: "#FFFDE7",  # 较紧急-浅黄色背景
+            6: "#E8F5E9",  # 中紧急-浅绿色背景
+            7: "#E8F5E9",  # 常规紧急-浅绿色背景
+            8: "#E3F2FD",  # 低紧急-浅蓝色背景
+            9: "#E3F2FD",  # 极低紧急-浅蓝色背景
+            10: "#E3F2FD"   # 长期规划-浅蓝色背景
         }
         if self.is_overdue:
-            return "#ffe0e0"  # 超时使用浅红色背景
+            return "#FFEBEE"  # 超时使用浅红色背景
         elif self.is_done:
-            return "#f0f0f0"  # 已完成使用灰色背景
-        return urgency_colors.get(self.urgency, "#f0f0f0")
+            return "#F5F5F5"  # 已完成使用浅灰色背景
+        return urgency_colors.get(self.urgency, "#F5F5F5")
         
     def get_urgency_chunk_color(self):
         """根据紧急度获取进度条填充颜色（chunk颜色）"""
-        # 使用与左侧色块相同的颜色作为进度条填充色
+        # 使用用户提供的10档紧急度颜色
         urgency_colors = {
-            1: "rgb(255, 90, 90)",  # 最紧急-红色
-            2: "rgb(255, 170, 70)",  # 紧急-橙色
-            3: "rgb(255, 210, 0)",  # 中等-黄色
-            4: "rgb(100, 200, 120)",  # 较不紧急-绿色
-            5: "rgb(80, 150, 255)"  # 最不紧急-深蓝色
+            1: "#E53935",  # 超时未处理：红色
+            2: "#F56C6C",  # 极度紧急：深橙色
+            3: "#FA8C16",  # 极高紧急：橙色
+            4: "#FFC107",  # 高紧急：亮黄色
+            5: "#FFE082",  # 较紧急：暖黄色
+            6: "#66BB6A",  # 中紧急：嫩绿色
+            7: "#2E7D32",  # 常规紧急：翠绿色
+            8: "#64B5F6",  # 低紧急：浅蓝色
+            9: "#1976D2",  # 极低紧急：天蓝色
+            10: "#42A5F5"   # 长期规划：蓝色
         }
         if self.is_overdue:
-            return "rgb(255, 90, 90)"  # 超时使用红色
+            return "#E53935"  # 超时使用红色
         elif self.is_done:
-            return "rgb(150, 150, 150)"  # 已完成使用灰色
-        return urgency_colors.get(self.urgency, "rgb(100, 180, 250)")
+            return "#9E9E9E"  # 已完成使用灰色
+        return urgency_colors.get(self.urgency, "#42A5F5")
 
     def get_color_style(self):
         """左侧色块颜色逻辑"""
         if self.is_overdue:
-            return "background-color: rgb(255, 90, 90);"  # 超时-红色
+            return "background-color: #E53935;"  # 超时-红色
         elif self.is_done:
-            return "background-color: rgb(150, 150, 150);"  # 已完成-灰色
+            return "background-color: #9E9E9E;"  # 已完成-灰色
         else:
             urgency_colors = {
-                1: "background-color: rgb(255, 90, 90);",  # 最紧急-红色
-                2: "background-color: rgb(255, 170, 70);",  # 紧急-橙色
-                3: "background-color: rgb(255, 210, 0);",  # 中等-黄色
-                4: "background-color: rgb(100, 200, 120);",  # 较不紧急-绿色
-                5: "background-color: rgb(80, 150, 255);"  # 最不紧急-深蓝色
+                1: "background-color: #E53935;",  # 超时未处理：红色
+                2: "background-color: #F56C6C;",  # 极度紧急：深橙色
+                3: "background-color: #FA8C16;",  # 极高紧急：橙色
+                4: "background-color: #FFC107;",  # 高紧急：亮黄色
+                5: "background-color: #FFE082;",  # 较紧急：暖黄色
+                6: "background-color: #66BB6A;",  # 中紧急：嫩绿色
+                7: "background-color: #2E7D32;",  # 常规紧急：翠绿色
+                8: "background-color: #64B5F6;",  # 低紧急：浅蓝色
+                9: "background-color: #1976D2;",  # 极低紧急：天蓝色
+                10: "background-color: #42A5F5;"   # 长期规划：蓝色
             }
-            return urgency_colors.get(self.urgency, "background-color: rgb(200, 200, 200);")
+            return urgency_colors.get(self.urgency, "background-color: #BDBDBD;")
     
     def calculate_progress(self):
         """根据创建时间和截止日期计算任务进度"""
@@ -833,14 +848,12 @@ class TaskItemWidget(QWidget):
                     time_font.setPointSize(10)
                     time_font.setBold(True)
                     time_label.setFont(time_font)
-                    time_label.setStyleSheet("color: rgb(220, 50, 50);")  # 超时显示红色
+                    # 使用紧急度颜色设置时间标签样式，加粗字体提高可读性
+                    urgency_color = self.get_urgency_chunk_color()
+                    time_label.setStyleSheet(f"color: {urgency_color}; font-weight: bold;")
                     
-                    # 更新左侧色块为红色
-                    color_bar_item = main_layout.itemAt(0)
-                    if color_bar_item:
-                        color_bar = color_bar_item.widget()
-                        if color_bar:
-                            color_bar.setStyleSheet("border-radius: 3px; background-color: rgb(255, 90, 90);")
+                    # 更新左侧色块为紧急度颜色
+                    self.set_urgency(self.urgency, is_overdue=True)
                     
                     # 直接更新标签文本，确保立即生效
                     old_text = time_label.text()
@@ -874,11 +887,9 @@ class TaskItemWidget(QWidget):
                     time_font.setBold(True)
                     time_label.setFont(time_font)
                     
-                    # 根据剩余时间设置颜色
-                    if days > 0:
-                        time_label.setStyleSheet("color: rgb(0, 80, 150);")  # 正常剩余时间显示蓝色
-                    else:
-                        time_label.setStyleSheet("color: rgb(245, 120, 0);")  # 短时间显示橙色
+                    # 使用紧急度颜色设置时间标签样式，加粗字体提高可读性
+                    urgency_color = self.get_urgency_chunk_color()
+                    time_label.setStyleSheet(f"color: {urgency_color}; font-weight: bold;")
                     
                     # 直接更新标签文本，确保立即生效
                     old_text = time_label.text()

@@ -539,6 +539,10 @@ class StatisticsCardWidget(QWidget):
         # 完成率卡片
         self.completion_rate_group = QGroupBox("任务按时完成率")
         self.completion_rate_layout = QFormLayout()
+        # 设置表单布局的垂直间距
+        self.completion_rate_layout.setVerticalSpacing(10)
+        # 添加一个空行作为标题和内容之间的分隔
+        self.completion_rate_layout.addRow(QLabel(""))
         self.total_tasks_label = QLabel("0")
         self.on_time_tasks_label = QLabel("0")
         self.rate_label = QLabel("0.00%")
@@ -557,6 +561,10 @@ class StatisticsCardWidget(QWidget):
         # 平均完成时间卡片
         self.avg_time_group = QGroupBox("平均完成任务时间")
         self.avg_time_layout = QFormLayout()
+        # 设置表单布局的垂直间距
+        self.avg_time_layout.setVerticalSpacing(10)
+        # 添加一个空行作为标题和内容之间的分隔
+        self.avg_time_layout.addRow(QLabel(""))
         self.count_label = QLabel("0")
         self.avg_hours_label = QLabel("0")
         self.avg_minutes_label = QLabel("0")
@@ -573,6 +581,7 @@ class StatisticsCardWidget(QWidget):
         
         # 添加卡片到布局
         cards_layout.addWidget(self.completion_rate_group)
+        cards_layout.addSpacing(25)  # 增加卡片之间的水平间距
         cards_layout.addWidget(self.avg_time_group)
         
         # 添加到主布局
@@ -711,11 +720,14 @@ class StatisticsWidget(QWidget):
         
         # 添加图表到布局
         charts_layout.addWidget(trend_widget)
+        charts_layout.addSpacing(20)  # 增加图表之间的水平间距
         charts_layout.addWidget(distribution_widget)
         
         # 添加到主布局
         main_layout.addLayout(title_layout)
+        main_layout.addSpacing(20)  # 增加标题与统计卡片之间的垂直间距
         main_layout.addWidget(stats_card_widget)
+        main_layout.addSpacing(20)  # 增加统计卡片与图表之间的垂直间距
         main_layout.addLayout(charts_layout)
         
         # 设置布局

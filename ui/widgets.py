@@ -402,22 +402,7 @@ class TaskItemWidget(QWidget):
             return False
     
     def enterEvent(self, event):
-        """鼠标进入事件处理，实现鼠标经过效果"""
-        # 保存当前背景色
-        self.original_palette = self.palette()
-        
-        # 创建新的调色板
-        new_palette = QPalette(self.original_palette)
-        
-        # 根据主题设置不同的悬停背景色
-        if hasattr(self, 'is_dark_theme') and self.is_dark_theme:
-            new_palette.setColor(QPalette.Window, QColor(45, 45, 48))  # 深色主题悬停色
-        else:
-            new_palette.setColor(QPalette.Window, QColor(240, 240, 240))  # 浅色主题悬停色
-        
-        # 应用新的调色板
-        self.setPalette(new_palette)
-        
+        """鼠标进入事件处理，不设置样式表以避免与QListWidget::item:hover冲突"""
         # 确保背景色变化立即生效
         self.update()
         
@@ -425,11 +410,9 @@ class TaskItemWidget(QWidget):
         super().enterEvent(event)
     
     def leaveEvent(self, event):
-        """鼠标离开事件处理，恢复原始背景色"""
-        # 恢复原始背景色
-        if hasattr(self, 'original_palette'):
-            self.setPalette(self.original_palette)
-            self.update()
+        """鼠标离开事件处理，不设置样式表以避免与QListWidget::item:hover冲突"""
+        # 确保背景色变化立即生效
+        self.update()
         
         # 调用父类方法
         super().leaveEvent(event)
@@ -961,9 +944,17 @@ class TaskListWidget(QWidget):
                 margin: 3px 0;
                 background-color: transparent;
                 border-radius: 6px;
+                padding: 5px;
             }
+
+            /* 鼠标悬停样式任务项 */
+            QListWidget::item:hover {
+                background-color: #e1eff5;
+                border-radius: 6px;
+            }
+            /* 选中样式任务项 */
             QListWidget::item:selected {
-                background-color: #e6f2ff;
+                background-color: #d0e9f5;
                 border-radius: 6px;
             }
             /* 深色主题样式调整 */
@@ -974,6 +965,11 @@ class TaskListWidget(QWidget):
             QListWidget[darkTheme="true"]::item {
                 background-color: #252526;
                 color: #ffffff;
+            }
+            QListWidget[darkTheme="true"]::item:hover {
+                background-color: #3D3D40;
+                border: 1px solid #505050;
+                border-radius: 2px;
             }
             QListWidget[darkTheme="true"]::item:selected {
                 background-color: #0e639c;

@@ -130,22 +130,26 @@ class SettingsDialog(QDialog):
         self.nav_list.addItems(["基本设置", "备份与恢复", "外观设置", "通知设置", "数据更新设置", "快捷键设置"])
         self.nav_list.setCurrentRow(0)
         self.nav_list.setStyleSheet("""
-            QListWidget {
-                border: none;
-                background-color: transparent;
-            }
-            QListWidget::item {
-                padding: 12px 20px;
-                height: 48px;
-                font-size: 14px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QListWidget::item:selected {
-                background-color: #e6f2ff;
-                color: #0078d7;
-                border-left: 3px solid #0078d7;
-            }
-        """)
+                QListWidget {
+                    border: none;
+                    background-color: transparent;
+                }
+                QListWidget::item {
+                    padding: 12px 20px;
+                    height: 48px;
+                    font-size: 14px;
+                    border-bottom: 1px solid #f0f0f0;
+                }
+                /* 鼠标悬停效果 */
+                QListWidget::item:hover {
+                    background-color: #e0e0e0;
+                }
+                QListWidget::item:selected {
+                    background-color: #e6f2ff;
+                    color: #0078d7;
+                    border-left: 3px solid #0078d7;
+                }
+            """)
         # 移除不需要的itemClicked连接，使用currentRowChanged即可
         nav_layout.addWidget(self.nav_list, 1)  # 添加拉伸因子1，使导航列表铺满剩余高度
         
@@ -741,6 +745,10 @@ class SettingsDialog(QDialog):
                     font-size: 14px;
                     border-bottom: 1px solid #3e3e42;
                     color: #ffffff;
+                }
+                /* 鼠标悬停效果 */
+                QListWidget::item:hover { 
+                    background-color: #3d3d40;
                 }
                 QListWidget::item:selected { 
                     background-color: #0e639c;
@@ -3296,6 +3304,62 @@ class MainWindow(QMainWindow):
                     background-color: #f5f5f5;
                     color: #333;
                 }
+                QMenuBar {
+                    background-color: #f5f5f5;
+                    color: #333333;
+                    padding: 4px 2px;
+                    border: 1px solid transparent;
+                }
+                QMenuBar::item {
+                    padding: 4px 8px;
+                    background-color: transparent;
+                }
+                /* 鼠标悬停样式菜单栏 */
+                QMenuBar::item:hover {
+                    background-color: #357abd;
+                    color: #ffffff;
+                }
+                /* 选中样式菜单栏 */
+                QMenuBar::item:selected {
+                    background-color: #357abd;
+                    color: #ffffff;
+                }
+                QMenuBar::item:!hover:!selected {
+                    background-color: transparent;
+                    color: #333333;
+                }
+                QMenuBar::item:focus {
+                    outline: none;
+                }
+                QMenu {
+                    background-color: white;
+                    border: 1px solid #ddd;
+                    color: #333333;
+                }
+                QMenu::item {
+                    padding: 6px 24px;
+                }
+                QMenu::item:hover {
+                    background-color: #357abd;
+                    color: #ffffff;
+                }
+                /* 标签页样式 */
+                QTabBar {
+                    background-color: #f0f0f0;
+                }
+                QTabBar::tab {
+                    background-color: transparent;
+                    padding: 8px 16px;
+                    border: none;
+                }
+                /* 标签页鼠标悬停效果 */
+                QTabBar::tab:hover {
+                    background-color: #e0e0e0;
+                }
+                /* 标签页选中效果 */
+                QTabBar::tab:selected {
+                    background-color: white;
+                }
                 QGroupBox {
                     background-color: white;
                     border: 1px solid #ddd;
@@ -3306,6 +3370,23 @@ class MainWindow(QMainWindow):
                     subcontrol-origin: margin;
                     subcontrol-position: top left;
                     padding: 0 5px;
+                }
+                /* 标签页样式 */
+                QTabBar {
+                    background-color: #f0f0f0;
+                }
+                QTabBar::tab {
+                    background-color: transparent;
+                    padding: 8px 16px;
+                    border: none;
+                }
+                /* 标签页鼠标悬停效果 */
+                QTabBar::tab:hover {
+                    background-color: #e0e0e0;
+                }
+                /* 标签页选中效果 */
+                QTabBar::tab:selected {
+                    background-color: white;
                 }
                 QPushButton {
                     background-color: #0078d7;
@@ -3518,6 +3599,10 @@ class MainWindow(QMainWindow):
                     border: 1px solid #3e3e42;
                     border-bottom: none;
                     color: #ffffff;
+                }
+                /* 标签页鼠标悬停效果 */
+                QTabBar::tab:hover {
+                    background-color: #3d3d40;
                 }
                 QTabBar::tab:selected {
                     background-color: #252526;

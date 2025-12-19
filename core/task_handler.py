@@ -282,10 +282,10 @@ class TaskHandler:
             has_deadline = task["deadline"] != "无截止日期"
             
             # 第二条件：紧急度（1最优先）
-            urgency = task["urgency"] if has_deadline else 0
+            urgency = task.get("urgency", 0) if has_deadline else 0
             
             # 第三条件：重要度降序（3星最优先）
-            importance = -task["importance"]
+            importance = -task.get("importance", 1)  # 默认重要度为1（最低）
             
             # 第四条件：剩余时间（对于有截止日期的任务）
             remaining_time = 0

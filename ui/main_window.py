@@ -2564,7 +2564,13 @@ class MainWindow(QMainWindow):
 
     def format_task_text(self, task):
         """格式化任务显示文本，包含创建时间、截止日期、类别、标签和倒计时信息"""
-        stars = "★" * task["importance"] + "☆" * (3 - task["importance"])
+        # 获取重要度（默认1）
+        importance = task.get("importance", 1)
+        stars = "★" * importance + "☆" * (3 - importance)
+        
+        # 获取紧急度（默认0）
+        urgency = task.get("urgency", 0)
+        
         # 计算并获取倒计时信息
         time_remaining = self.task_handler.calculate_time_remaining(task)
         
@@ -2575,7 +2581,7 @@ class MainWindow(QMainWindow):
         # 构建任务文本
         text = (
             f"{task['name']}\n" 
-            f"重要度: {stars} | 紧急度: {task['urgency']}\n" 
+            f"重要度: {stars} | 紧急度: {urgency}\n" 
             f"创建时间: {create_time}\n"
         )
         
@@ -2864,7 +2870,7 @@ class MainWindow(QMainWindow):
             list_widget.add_task_item(
                 self.format_task_text(task),
                 index=index,
-                urgency=task["urgency"],
+                urgency=task.get("urgency", 0),  # 默认紧急度为0
                 is_overdue=(task_type == "overdue"),
                 is_done=(task_type == "done"),
                 create_time=task.get('create_time', None),

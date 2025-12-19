@@ -1,6 +1,5 @@
-import json
 import os
-from PyQt5.QtWidgets import QMessageBox
+from .json_utils import read_json_file, write_json_file
 
 class ConfigManager:
     """负责程序配置的加载和保存"""
@@ -21,32 +20,25 @@ class ConfigManager:
 
     def load_config(self):
         """加载配置 - 确保用户配置优先于默认配置"""
-        if os.path.exists(self.config_path):
+        config = read_json_file(self.config_path, None)
+        
+        if config is not None:
             try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                    
-                    # 关键修复：使用用户配置覆盖默认配置
-                    # 创建默认配置的副本，然后用用户配置项覆盖
-                    final_config = self.default_config.copy()
-                    # 逐个复制用户配置项，确保完全覆盖默认值
-                    for key, value in config.items():
-                        final_config[key] = value
-                    
-                    print(f"[ConfigManager] 加载配置成功: backup_interval={final_config.get('backup_interval', 60)}")
-                    return final_config
+                # 关键修复：使用用户配置覆盖默认配置
+                # 创建默认配置的副本，然后用用户配置项覆盖
+                final_config = self.default_config.copy()
+                # 逐个复制用户配置项，确保完全覆盖默认值
+                for key, value in config.items():
+                    final_config[key] = value
+                
+                print(f"[ConfigManager] 加载配置成功: backup_interval={final_config.get('backup_interval', 60)}")
+                return final_config
             except Exception as e:
                 print(f"[ConfigManager] 加载配置失败: {e}")
-                QMessageBox.warning(None, "配置错误", f"加载配置失败，使用默认设置: {str(e)}")
+                return self.default_config
         print("[ConfigManager] 使用默认配置")
         return self.default_config
 
     def save_config(self, config):
         """保存配置"""
-        try:
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            QMessageBox.warning(None, "配置错误", f"保存配置失败: {str(e)}")
-            return False
+        return write_json_file(self.config_path, config)

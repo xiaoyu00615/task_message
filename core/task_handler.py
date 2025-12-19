@@ -1,6 +1,7 @@
 from datetime import datetime, date, timedelta
 import time
 from .data_import_export import DataImportExport
+from .time_utils import format_time_remaining, get_target_urgency, calculate_time_remaining, parse_datetime
 
 
 class TaskHandler:
@@ -19,62 +20,7 @@ class TaskHandler:
         返回格式化的倒计时字符串，如"剩余: 2天 3小时 45分钟"或"已超时: 1小时 30分钟"
         当剩余时间为0分钟时开始显示秒数
         """
-        if task["deadline"] == "无截止日期":
-            return "无截止日期"
-        
-        try:
-            # 尝试解析包含时间的格式
-            try:
-                deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d %H:%M")
-            except ValueError:
-                # 回退到旧格式（仅日期）
-                deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d")
-            
-            now = datetime.now()
-            time_diff = deadline_datetime - now
-            total_seconds = time_diff.total_seconds()
-            
-            if total_seconds <= 0:
-                # 已超时
-                total_seconds = abs(total_seconds)
-                days = int(total_seconds // (24 * 3600))
-                hours = int((total_seconds % (24 * 3600)) // 3600)
-                minutes = int((total_seconds % 3600) // 60)
-                seconds = int(total_seconds % 60)
-                
-                parts = []
-                if days > 0:
-                    parts.append(f"{days}天")
-                if hours > 0:
-                    parts.append(f"{hours}小时")
-                if minutes > 0 or not parts:  # 至少显示分钟
-                    parts.append(f"{minutes}分钟")
-                # 当小时和天都为0时，显示秒数
-                if not days and not hours:
-                    parts.append(f"{seconds}秒")
-                
-                return f"已超时: {' '.join(parts)}"
-            else:
-                # 未超时
-                days = int(total_seconds // (24 * 3600))
-                hours = int((total_seconds % (24 * 3600)) // 3600)
-                minutes = int((total_seconds % 3600) // 60)
-                seconds = int(total_seconds % 60)
-                
-                parts = []
-                if days > 0:
-                    parts.append(f"{days}天")
-                if hours > 0:
-                    parts.append(f"{hours}小时")
-                if minutes > 0 or not parts:  # 至少显示分钟
-                    parts.append(f"{minutes}分钟")
-                # 当小时和天都为0时，显示秒数
-                if not days and not hours:
-                    parts.append(f"{seconds}秒")
-                
-                return f"剩余: {' '.join(parts)}"
-        except Exception as e:
-            return "时间格式错误"
+        return format_time_remaining(task["deadline"])
 
     def add_task(self, task_info):
         """添加新任务到待办列表"""
@@ -220,35 +166,13 @@ class TaskHandler:
                     # 回退到旧格式（仅日期）
                     deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d")
                 
-                # 计算剩余天数（包含小时和分钟）
+                # 计算剩余天数（包含小时和分钟）用于reason显示
                 now = datetime.now()
                 time_remaining = deadline_datetime - now
                 days_remaining = time_remaining.total_seconds() / (24 * 3600)  # 转换为天
 
-                # 计算剩余小时数
-                hours_remaining = time_remaining.total_seconds() / 3600
-                
-                # 根据剩余时间自动调整紧急度（1最紧急，10最不紧急）
-                if hours_remaining <= 0:
-                    target_urgency = 1  # 超时未处理
-                elif hours_remaining <= 2:
-                    target_urgency = 2  # 极度紧急：0-2小时内完成
-                elif hours_remaining <= 8:
-                    target_urgency = 3  # 极高紧急：2-8小时内完成
-                elif hours_remaining <= 24:
-                    target_urgency = 4  # 高紧急：8-24小时内完成
-                elif hours_remaining <= 48:
-                    target_urgency = 5  # 较紧急：2天内完成
-                elif hours_remaining <= 120:
-                    target_urgency = 6  # 中紧急：3-5天内完成
-                elif hours_remaining <= 168:
-                    target_urgency = 7  # 常规紧急：1周内完成
-                elif hours_remaining <= 336:
-                    target_urgency = 8  # 低紧急：2-3周内完成
-                elif hours_remaining <= 1008:
-                    target_urgency = 9  # 极低紧急：1个月内完成
-                else:
-                    target_urgency = 10  # 长期规划：1个月以上
+                # 使用统一的紧急度计算函数
+                target_urgency = get_target_urgency(task["deadline"])
 
                 # 根据剩余时间正确更新紧急度，无论提升还是降低
                 if target_urgency != task["urgency"]:
@@ -291,17 +215,7 @@ class TaskHandler:
             remaining_time = 0
             if has_deadline:
                 try:
-                    # 尝试解析包含时间的格式
-                    try:
-                        deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d %H:%M")
-                    except ValueError:
-                        # 回退到旧格式（仅日期）
-                        deadline_datetime = datetime.strptime(task["deadline"], "%Y-%m-%d")
-                    
-                    # 计算剩余时间秒数
-                    now = datetime.now()
-                    remaining_seconds = (deadline_datetime - now).total_seconds()
-                    remaining_time = remaining_seconds
+                    _, _, remaining_time = calculate_time_remaining(task["deadline"])
                 except Exception:
                     # 日期解析错误时，给一个较大的值，让它排在后面
                     remaining_time = float('inf')

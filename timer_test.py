@@ -48,6 +48,6 @@ def test_timer():
     return counter > 0
 
 result = test_timer()
-print(f'测试结果: {'成功' if result else '失败'}')
+print(f'测试结果: {"成功" if result else "失败"}')
 
 sys.exit(0 if result else 1)

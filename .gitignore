@@ -87,3 +87,5 @@ config.json
 plan
 backups
 backup
+
+.buildozer
